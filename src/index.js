@@ -39,24 +39,18 @@ window.api.getConfig().then((cfg) => {
   }
 });
 
-// 2. Drag & Drop Handlers
-dropZone.addEventListener('click', () => {
-  folderInput.click();
-});
-
-folderInput.addEventListener('change', (e) => {
-  if (e.target.files.length > 0) {
-    // Read the folder path
-    const sampleFile = e.target.files[0];
-    // In Electron, file objects contain the absolute path
-    const folderPath = sampleFile.path ? window.pathDirName(sampleFile.path) : '';
-    if (folderPath) {
-      loadFolder(folderPath);
-    }
+// 2. Drag & Drop & Select Handlers
+dropZone.addEventListener('click', async () => {
+  const folderPath = await window.api.selectFolder();
+  if (folderPath) {
+    loadFolder(folderPath);
   }
 });
 
-// Drag events
+// Prevent default drag behaviors globally to stop Chromium from navigating/opening files
+document.addEventListener('dragover', (e) => e.preventDefault());
+document.addEventListener('drop', (e) => e.preventDefault());
+
 dropZone.addEventListener('dragover', (e) => {
   e.preventDefault();
   dropZone.classList.add('dragover');

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -64,6 +64,17 @@ app.on('window-all-closed', () => {
 });
 
 // ---------- IPC Handlers ----------
+
+ipcMain.handle('select-folder', async () => {
+  if (!mainWin || mainWin.isDestroyed()) return null;
+  const result = await dialog.showOpenDialog(mainWin, {
+    properties: ['openDirectory']
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
+});
 
 ipcMain.handle('get-config', () => {
   const cfg = loadSharedConfig();
