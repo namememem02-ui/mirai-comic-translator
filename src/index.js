@@ -9,6 +9,8 @@ const thumbnailsList = document.getElementById('thumbnailsList');
 const activePageTitle = document.getElementById('activePageTitle');
 const translatePageBtn = document.getElementById('translatePageBtn');
 const translateAllBtn = document.getElementById('translateAllBtn');
+const previewToggleBtn = document.getElementById('previewToggleBtn');
+const exportChapterBtn = document.getElementById('exportChapterBtn');
 const viewportContainer = document.getElementById('viewportContainer');
 const activeImage = document.getElementById('activeImage');
 const bubbleOverlay = document.getElementById('bubbleOverlay');
@@ -102,6 +104,8 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   projName.textContent = currentProject;
   projChapter.textContent = currentChapter;
   projectInfo.style.display = 'block';
+  previewToggleBtn.disabled = false;
+  exportChapterBtn.disabled = false;
 
   // Load Glossary memory
   projectGlossary = await window.api.loadMemory({ project: currentProject });
@@ -489,4 +493,215 @@ function createGlossaryRow(eng = '', thai = '') {
 
 addGlossaryBtn.addEventListener('click', () => {
   createGlossaryRow();
+});
+
+// 11. Typeset Preview and Export Management
+let isPreviewMode = false;
+previewToggleBtn.addEventListener('click', () => {
+  isPreviewMode = !isPreviewMode;
+  if (isPreviewMode) {
+    previewToggleBtn.textContent = '👁️ ดูภาพต้นฉบับ';
+    previewToggleBtn.classList.remove('btn-accent');
+    previewToggleBtn.classList.add('btn-secondary');
+  } else {
+    previewToggleBtn.textContent = '👁️ ดูหน้าแปลไทย';
+    previewToggleBtn.classList.remove('btn-secondary');
+    previewToggleBtn.classList.add('btn-accent');
+  }
+  
+  if (activeIndex !== -1) {
+    selectPage(activeIndex);
+  }
+});
+
+activeImage.addEventListener('load', () => {
+  if (activeImage.src.startsWith('data:')) {
+    return;
+  }
+  if (isPreviewMode && activePageTranslation.length > 0) {
+    renderTypesetImage();
+  }
+});
+
+function renderTypesetImage() {
+  const canvas = document.createElement('canvas');
+  canvas.width = activeImage.naturalWidth;
+  canvas.height = activeImage.naturalHeight;
+  const ctx = canvas.getContext('2d');
+  
+  ctx.drawImage(activeImage, 0, 0);
+  
+  activePageTranslation.forEach((bubble) => {
+    if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
+    const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+    const x1 = (xmin / 1000) * canvas.width;
+    const y1 = (ymin / 1000) * canvas.height;
+    const x2 = (xmax / 1000) * canvas.width;
+    const y2 = (ymax / 1000) * canvas.height;
+    const w = x2 - x1;
+    const h = y2 - y1;
+    
+    const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(x1, y1, w, h);
+    
+    if (bubble.translated_text) {
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h);
+    }
+  });
+  
+  activeImage.src = canvas.toDataURL('image/jpeg', 0.95);
+}
+
+function sampleBubbleBackground(ctx, x, y, w, h) {
+  try {
+    const pixels = [
+      ctx.getImageData(Math.max(0, Math.round(x + 2)), Math.max(0, Math.round(y + 2)), 1, 1).data,
+      ctx.getImageData(Math.min(ctx.canvas.width - 1, Math.round(x + w - 2)), Math.max(0, Math.round(y + 2)), 1, 1).data,
+      ctx.getImageData(Math.max(0, Math.round(x + 2)), Math.min(ctx.canvas.height - 1, Math.round(y + h - 2)), 1, 1).data,
+      ctx.getImageData(Math.min(ctx.canvas.width - 1, Math.round(x + w - 2)), Math.min(ctx.canvas.height - 1, Math.round(y + h - 2)), 1, 1).data
+    ];
+    
+    let r = 0, g = 0, b = 0;
+    for (const p of pixels) {
+      r += p[0];
+      g += p[1];
+      b += p[2];
+    }
+    r = Math.round(r / 4);
+    g = Math.round(g / 4);
+    b = Math.round(b / 4);
+    
+    if (r > 220 && g > 220 && b > 220) {
+      return '#ffffff';
+    }
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  } catch (e) {
+    return '#ffffff';
+  }
+}
+
+function drawTypesetText(ctx, text, x, y, w, h) {
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  
+  let fontSize = Math.max(12, Math.round(h * 0.16));
+  if (fontSize > 26) fontSize = 26;
+  
+  let lines = [];
+  
+  while (fontSize >= 8) {
+    ctx.font = `bold ${fontSize}px 'Sarabun', 'Segoe UI', sans-serif`;
+    lines = wrapThaiText(ctx, text, w * 0.85);
+    const totalHeight = lines.length * (fontSize * 1.25);
+    if (totalHeight <= h * 0.85) {
+      break;
+    }
+    fontSize -= 1;
+  }
+  
+  const lineHeight = fontSize * 1.25;
+  const startY = y + (h / 2) - ((lines.length - 1) * lineHeight / 2);
+  
+  lines.forEach((line, idx) => {
+    ctx.fillText(line, x + (w / 2), startY + (idx * lineHeight));
+  });
+}
+
+function wrapThaiText(ctx, text, maxWidth) {
+  const chars = Array.from(text);
+  let lines = [];
+  let currentLine = '';
+  
+  for (let i = 0; i < chars.length; i++) {
+    const char = chars[i];
+    const testLine = currentLine + char;
+    const metrics = ctx.measureText(testLine);
+    
+    if (metrics.width > maxWidth && currentLine.length > 0) {
+      lines.push(currentLine);
+      currentLine = char;
+    } else {
+      currentLine = testLine;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
+exportChapterBtn.addEventListener('click', async () => {
+  exportChapterBtn.disabled = true;
+  const oldText = exportChapterBtn.textContent;
+  
+  try {
+    let exportedCount = 0;
+    for (let i = 0; i < images.length; i++) {
+      const imgObj = images[i];
+      exportChapterBtn.textContent = `⏳ ส่งออกหน้า ${i+1}/${images.length}...`;
+      
+      const translation = await window.api.loadPageTranslation({
+        project: currentProject,
+        chapter: currentChapter,
+        pageName: imgObj.name
+      });
+      
+      const img = new Image();
+      img.src = imgObj.fileUrl;
+      await new Promise(resolve => {
+        img.onload = resolve;
+        img.onerror = resolve;
+      });
+      
+      const canvas = document.createElement('canvas');
+      canvas.width = img.naturalWidth || 800;
+      canvas.height = img.naturalHeight || 1200;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      
+      if (translation && translation.length > 0) {
+        translation.forEach((bubble) => {
+          if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
+          const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+          const x1 = (xmin / 1000) * canvas.width;
+          const y1 = (ymin / 1000) * canvas.height;
+          const x2 = (xmax / 1000) * canvas.width;
+          const y2 = (ymax / 1000) * canvas.height;
+          const w = x2 - x1;
+          const h = y2 - y1;
+          
+          const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
+          ctx.fillStyle = bgColor;
+          ctx.fillRect(x1, y1, w, h);
+          
+          if (bubble.translated_text) {
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h);
+          }
+        });
+      }
+      
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      
+      const saveRes = await window.api.saveTypesetImage({
+        project: currentProject,
+        chapter: currentChapter,
+        pageName: imgObj.name,
+        dataUrl: dataUrl
+      });
+      
+      if (saveRes.error) {
+        throw new Error(saveRes.error);
+      }
+      exportedCount++;
+    }
+    
+    alert(`🎉 ส่งออกตอนสำเร็จ!\nไฟล์ทั้งหมดบันทึกแล้วในโฟลเดอร์โครงการที่:\noutput/${currentProject}/${currentChapter}/`);
+  } catch (err) {
+    alert(`การส่งออกล้มเหลว: ${err.message}`);
+  } finally {
+    exportChapterBtn.disabled = false;
+    exportChapterBtn.textContent = oldText;
+  }
 });

@@ -597,3 +597,46 @@ h1, h2, h3, h4, .app-title, .btn {
   padding: 4px 8px;
   font-size: 11px;
 }
+
+.btn-accent {
+  background: linear-gradient(135deg, #ec4899, #d946ef);
+  color: white;
+  padding: 8px 16px;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(236, 72, 153, 0.2);
+}
+
+.btn-accent:hover:not(:disabled) {
+  opacity: 0.95;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(236, 72, 153, 0.35);
+}
+
+.btn-accent:disabled {
+  background: #334155;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  padding: 8px 16px;
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.btn-success:hover:not(:disabled) {
+  opacity: 0.95;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.35);
+}
+
+.btn-success:disabled {
+  background: #334155;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+

@@ -253,6 +253,23 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
 });
 
 // Local project save/load handlers
+ipcMain.handle('save-typeset-image', (_e, { project, chapter, pageName, dataUrl }) => {
+  try {
+    const OUTPUT_DIR = path.join(__dirname, 'output');
+    const dir = path.join(OUTPUT_DIR, project, chapter);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const file = path.join(dir, pageName);
+    fs.writeFileSync(file, buffer);
+    return { success: true, absolutePath: file };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('save-page-translation', (_e, { project, chapter, pageName, translationData }) => {
   try {
     const dir = path.join(PROJECTS_DIR, project, chapter);
