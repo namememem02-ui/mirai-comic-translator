@@ -93,7 +93,7 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
     if (!stat.isDirectory()) return { error: 'เส้นทางนี้ไม่ใช่โฟลเดอร์' };
 
     const files = fs.readdirSync(folderPath);
-    const validExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+    const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.jfif'];
     
     // Filter and sort image files alphanumerically
     const images = files
