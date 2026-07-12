@@ -150,9 +150,6 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
   const ext = path.extname(imagePath).toLowerCase();
   const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
 
-  const model = 'gemini-1.5-pro'; // Use pro for high-fidelity translation
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-
   // Structure prompt using the memory/glossary if provided
   let glossaryText = '';
   if (glossary && Object.keys(glossary).length > 0) {
@@ -172,49 +169,69 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
     `  {"bubble_id": 1, "box_2d": [100, 200, 250, 450], "original_text": "Hello", "translated_text": "สวัสดี"}\n` +
     `]`;
 
-  const body = {
-    contents: [
-      {
-        parts: [
+  const models = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-1.5-pro'];
+  let lastErr = null;
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+      const body = {
+        contents: [
           {
-            inlineData: {
-              mimeType: mimeType,
-              data: base64Image
-            }
-          },
-          {
-            text: prompt
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: base64Image
+                }
+              },
+              {
+                text: prompt
+              }
+            ]
           }
-        ]
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = data?.error?.message || `HTTP ${res.status}`;
+        if (res.status === 404 || /not found|not supported/i.test(msg)) {
+          const e = new Error(msg);
+          e.retryNextModel = true;
+          throw e;
+        }
+        throw new Error(msg);
       }
-    ],
-    generationConfig: {
-      responseMimeType: "application/json"
+
+      const outputText = (data.candidates?.[0]?.content?.parts || [])
+        .map(p => p.text || '')
+        .join('')
+        .trim();
+
+      try {
+        return JSON.parse(outputText);
+      } catch (err) {
+        console.error('Failed to parse Gemini output as JSON:', outputText);
+        throw new Error('Gemini ตอบกลับไม่ได้โครงสร้าง JSON ที่ถูกต้อง: ' + err.message);
+      }
+    } catch (err) {
+      lastErr = err;
+      if (!err.retryNextModel) throw err;
+      console.warn(`Model ${model} failed, trying next... Error: ${err.message}`);
     }
-  };
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data?.error?.message || `HTTP ${res.status}`);
   }
-
-  const outputText = (data.candidates?.[0]?.content?.parts || [])
-    .map(p => p.text || '')
-    .join('')
-    .trim();
-
-  try {
-    return JSON.parse(outputText);
-  } catch (err) {
-    console.error('Failed to parse Gemini output as JSON:', outputText);
-    throw new Error('Gemini ตอบกลับไม่ได้โครงสร้าง JSON ที่ถูกต้อง: ' + err.message);
-  }
+  throw lastErr;
 });
 
 // Local project save/load handlers
