@@ -523,13 +523,36 @@ activeImage.addEventListener('load', () => {
   }
 });
 
-function renderTypesetImage() {
+async function renderTypesetImage() {
+  const originalSrc = activeImage.src;
   const canvas = document.createElement('canvas');
   canvas.width = activeImage.naturalWidth;
   canvas.height = activeImage.naturalHeight;
   const ctx = canvas.getContext('2d');
   
-  ctx.drawImage(activeImage, 0, 0);
+  let cleanedImgElement = activeImage;
+  let objectUrlToCleanup = null;
+  
+  try {
+    const inpaintedBlob = await runAIInpaint(originalSrc, activePageTranslation, canvas.width, canvas.height);
+    objectUrlToCleanup = URL.createObjectURL(inpaintedBlob);
+    
+    const cleanImg = new Image();
+    cleanImg.src = objectUrlToCleanup;
+    await new Promise((resolve, reject) => {
+      cleanImg.onload = resolve;
+      cleanImg.onerror = reject;
+    });
+    cleanedImgElement = cleanImg;
+  } catch (err) {
+    console.warn('[⚠️] AI Inpainting failed or offline. Falling back to smooth flat color erase. Error:', err.message);
+  }
+  
+  ctx.drawImage(cleanedImgElement, 0, 0);
+  
+  if (objectUrlToCleanup) {
+    URL.revokeObjectURL(objectUrlToCleanup);
+  }
   
   activePageTranslation.forEach((bubble) => {
     if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
@@ -541,11 +564,17 @@ function renderTypesetImage() {
     const w = x2 - x1;
     const h = y2 - y1;
     
-    const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
-    drawSmoothErase(ctx, x1, y1, w, h, bgColor);
+    if (cleanedImgElement === activeImage) {
+      const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
+      drawSmoothErase(ctx, x1, y1, w, h, bgColor);
+    }
     
+    const bgColorForContrast = (cleanedImgElement === activeImage)
+      ? sampleBubbleBackground(ctx, x1, y1, w, h)
+      : '#ffffff';
+      
     if (bubble.translated_text) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor);
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast);
     }
   });
   
@@ -665,6 +694,50 @@ function drawSmoothErase(ctx, x, y, w, h, bgColor) {
   ctx.restore();
 }
 
+async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = canvasWidth;
+  maskCanvas.height = canvasHeight;
+  const mctx = maskCanvas.getContext('2d');
+  
+  mctx.fillStyle = '#000000';
+  mctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  
+  bubbles.forEach((bubble) => {
+    if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
+    const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+    const x1 = (xmin / 1000) * canvasWidth;
+    const y1 = (ymin / 1000) * canvasHeight;
+    const x2 = (xmax / 1000) * canvasWidth;
+    const y2 = (ymax / 1000) * canvasHeight;
+    const w = x2 - x1;
+    const h = y2 - y1;
+    
+    mctx.fillStyle = '#ffffff';
+    mctx.beginPath();
+    mctx.roundRect(x1, y1, w, h, Math.min(w, h) * 0.2);
+    mctx.fill();
+  });
+  
+  const originalBlob = await fetch(imgUrl).then(r => r.blob());
+  const maskBlob = await new Promise(resolve => maskCanvas.toBlob(resolve, 'image/png'));
+  
+  const formData = new FormData();
+  formData.append('image', originalBlob, 'image.jpg');
+  formData.append('mask', maskBlob, 'mask.png');
+  
+  const res = await fetch('http://localhost:5000/inpaint', {
+    method: 'POST',
+    body: formData
+  });
+  
+  if (!res.ok) {
+    throw new Error(`Inpaint server returned HTTP ${res.status}`);
+  }
+  
+  return await res.blob();
+}
+
 exportChapterBtn.addEventListener('click', async () => {
   exportChapterBtn.disabled = true;
   const oldText = exportChapterBtn.textContent;
@@ -692,7 +765,28 @@ exportChapterBtn.addEventListener('click', async () => {
       canvas.width = img.naturalWidth || 800;
       canvas.height = img.naturalHeight || 1200;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+      
+      let cleanedImg = img;
+      let tempUrl = null;
+      
+      if (translation && translation.length > 0) {
+        try {
+          const inpaintedBlob = await runAIInpaint(imgObj.fileUrl, translation, canvas.width, canvas.height);
+          tempUrl = URL.createObjectURL(inpaintedBlob);
+          const cleanImg = new Image();
+          cleanImg.src = tempUrl;
+          await new Promise((resolve, reject) => {
+            cleanImg.onload = resolve;
+            cleanImg.onerror = reject;
+          });
+          cleanedImg = cleanImg;
+        } catch (err) {
+          console.warn('[⚠️] AI Inpainting failed or offline for export. Falling back to smooth erase. Error:', err.message);
+        }
+      }
+      
+      ctx.drawImage(cleanedImg, 0, 0);
+      if (tempUrl) URL.revokeObjectURL(tempUrl);
       
       if (translation && translation.length > 0) {
         translation.forEach((bubble) => {
@@ -705,11 +799,17 @@ exportChapterBtn.addEventListener('click', async () => {
           const w = x2 - x1;
           const h = y2 - y1;
           
-          const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
-          drawSmoothErase(ctx, x1, y1, w, h, bgColor);
+          if (cleanedImg === img) {
+            const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
+            drawSmoothErase(ctx, x1, y1, w, h, bgColor);
+          }
           
+          const bgColorForContrast = (cleanedImg === img)
+            ? sampleBubbleBackground(ctx, x1, y1, w, h)
+            : '#ffffff';
+            
           if (bubble.translated_text) {
-            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor);
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast);
           }
         });
       }

@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+python-multipart
+simple-lama-inpainting
+numpy
+opencv-python
+Pillow
