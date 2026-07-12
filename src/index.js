@@ -8,6 +8,7 @@ const projChapter = document.getElementById('projChapter');
 const thumbnailsList = document.getElementById('thumbnailsList');
 const activePageTitle = document.getElementById('activePageTitle');
 const translatePageBtn = document.getElementById('translatePageBtn');
+const translateAllBtn = document.getElementById('translateAllBtn');
 const viewportContainer = document.getElementById('viewportContainer');
 const activeImage = document.getElementById('activeImage');
 const bubbleOverlay = document.getElementById('bubbleOverlay');
@@ -179,6 +180,7 @@ async function selectPage(idx) {
   placeholderView.style.display = 'none';
   viewportContainer.style.display = 'block';
   translatePageBtn.disabled = false;
+  translateAllBtn.disabled = false;
 
   // Clear Overlay
   bubbleOverlay.innerHTML = '';
@@ -365,7 +367,69 @@ translatePageBtn.addEventListener('click', async () => {
     alert(`การแปลล้มเหลว: ${err.message}`);
   } finally {
     translatePageBtn.disabled = false;
-    translatePageBtn.textContent = '⚡ แปลหน้านี้ด้วย Gemini';
+    translatePageBtn.textContent = '⚡ แปลหน้านี้';
+  }
+});
+
+let isTranslatingAll = false;
+translateAllBtn.addEventListener('click', async () => {
+  if (isTranslatingAll) return;
+  isTranslatingAll = true;
+  translatePageBtn.disabled = true;
+  translateAllBtn.disabled = true;
+
+  try {
+    let translateCount = 0;
+    for (let i = 0; i < images.length; i++) {
+      const img = images[i];
+      
+      const existing = await window.api.loadPageTranslation({
+        project: currentProject,
+        chapter: currentChapter,
+        pageName: img.name
+      });
+      
+      if (existing) {
+        continue;
+      }
+      
+      translateCount++;
+      translateAllBtn.textContent = `⏳ แปลหน้า ${i+1}/${images.length} (${img.name})...`;
+      
+      await selectPage(i);
+      
+      const result = await window.api.translatePage({
+        imagePath: img.absolutePath,
+        glossary: projectGlossary
+      });
+      
+      activePageTranslation = result;
+      
+      await window.api.savePageTranslation({
+        project: currentProject,
+        chapter: currentChapter,
+        pageName: img.name,
+        translationData: result
+      });
+      
+      renderPageTranslation();
+      renderThumbnails();
+      
+      await new Promise(r => setTimeout(r, 1000));
+    }
+    
+    if (translateCount === 0) {
+      alert('ทุกหน้าในโฟลเดอร์นี้แปลเสร็จสมบูรณ์อยู่แล้วครับ!');
+    } else {
+      alert('🎉 แปลภาษาการ์ตูนทุกหน้าเสร็จสมบูรณ์เรียบร้อยแล้วครับ!');
+    }
+  } catch (err) {
+    alert(`การแปลแบบกลุ่มล้มเหลวระหว่างดำเนินการ: ${err.message}`);
+  } finally {
+    isTranslatingAll = false;
+    translatePageBtn.disabled = false;
+    translateAllBtn.disabled = false;
+    translateAllBtn.textContent = '⚡ แปลทุกหน้าอัตโนมัติ';
   }
 });
 
