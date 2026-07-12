@@ -178,13 +178,6 @@ async function selectPage(idx) {
 
   const activePage = images[idx];
   activePageTitle.textContent = activePage.name;
-  
-  // Render Image
-  activeImage.src = activePage.fileUrl;
-  placeholderView.style.display = 'none';
-  viewportContainer.style.display = 'block';
-  translatePageBtn.disabled = false;
-  translateAllBtn.disabled = false;
 
   // Clear Overlay
   bubbleOverlay.innerHTML = '';
@@ -204,6 +197,13 @@ async function selectPage(idx) {
     activePageTranslation = [];
     renderPlaceholder();
   }
+
+  // Render Image
+  activeImage.src = activePage.fileUrl;
+  placeholderView.style.display = 'none';
+  viewportContainer.style.display = 'block';
+  translatePageBtn.disabled = false;
+  translateAllBtn.disabled = false;
 }
 
 // 6. Render Page Translation & SVG Overlays
