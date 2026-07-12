@@ -2,41 +2,53 @@
 title LaMa Inpainting Sidecar Launcher
 cd /d "%~dp0"
 
-echo [🧠] กำลังตรวจสอบความพร้อมของระบบ Python...
+echo [🧠] Checking Python installation...
 python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [❌] ไม่พบการติดตั้ง Python ในระบบของคุณ!
-    echo กรุณาดาวน์โหลดและติดตั้ง Python (แนะนำรุ่น 3.9 - 3.11) จาก python.org
-    echo อย่าลืมติ๊กเลือก "Add Python to PATH" ตอนติดตั้งด้วยนะครับ
-    pause
-    exit /b 1
-)
+if errorlevel 1 goto NO_PYTHON
 
-if not exist .venv (
-    echo [📦] กำลังสร้าง Virtual Environment (.venv)...
-    python -m venv .venv
-    if %errorlevel% neq 0 (
-        echo [❌] การสร้าง venv ล้มเหลว!
-        pause
-        exit /b 1
-    )
-)
+if not exist .venv goto CREATE_VENV
+goto RUN_VENV
 
-echo [🚀] เปิดใช้งาน Virtual Environment (.venv)...
+:NO_PYTHON
+echo [X] Python was not found on your system.
+echo Please install Python (3.9 - 3.11 recommended) from python.org
+echo Make sure to check "Add Python to PATH" during installation.
+pause
+exit /b 1
+
+:CREATE_VENV
+echo [📦] Creating Virtual Environment (.venv)...
+python -m venv .venv
+if errorlevel 1 goto VENV_FAILED
+goto RUN_VENV
+
+:VENV_FAILED
+echo [X] Failed to create virtual environment.
+pause
+exit /b 1
+
+:RUN_VENV
+echo [🚀] Activating Virtual Environment...
 call .venv\Scripts\activate.bat
 
-echo [⚙️] กำลังดาวน์โหลดและติดตั้งไลบรารีที่จำเป็น (ขั้นตอนนี้ทำครั้งแรกครั้งเดียว)...
+echo [⚙️] Installing required Python libraries (this may take a few minutes)...
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-if %errorlevel% neq 0 (
-    echo [❌] การติดตั้งไลบรารีล้มเหลว!
-    pause
-    exit /b 1
-)
+if errorlevel 1 goto INSTALL_FAILED
+goto START_SERVER
 
-echo [🔥] กำลังเริ่มรันเซิร์ฟเวอร์ AI Inpainting (LaMa)...
+:INSTALL_FAILED
+echo [X] Dependency installation failed.
+pause
+exit /b 1
+
+:START_SERVER
+echo [🔥] Starting AI Inpainting Server (LaMa)...
 python inpaint_server.py
-if %errorlevel% neq 0 (
-    echo [❌] เซิร์ฟเวอร์หยุดทำงานกะทันหัน!
-    pause
-)
+if errorlevel 1 goto SERVER_FAILED
+exit /b 0
+
+:SERVER_FAILED
+echo [X] Server stopped unexpectedly.
+pause
+exit /b 1
