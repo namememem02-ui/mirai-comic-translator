@@ -77,7 +77,11 @@
           </button>
         </div>
       </div>
-      <div class="canvas-wrapper">
+      <div class="canvas-wrapper" style="position: relative;">
+        <div id="canvasLoader" class="canvas-loader" style="display: none;">
+          <div class="spinner"></div>
+          <p style="margin: 0; font-size: 14px; font-weight: 500;">🪄 กำลังลบตัวหนังสือด้วย AI Inpainting...</p>
+        </div>
         <div id="viewportContainer" class="viewport-container" style="display: none;">
           <img id="activeImage" src="" alt="Manga Page" />
           <!-- Overlay SVG for bubble bounding box highlights -->

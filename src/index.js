@@ -18,6 +18,7 @@ const placeholderView = document.getElementById('placeholderView');
 const glossaryList = document.getElementById('glossaryList');
 const addGlossaryBtn = document.getElementById('addGlossaryBtn');
 const bubblesList = document.getElementById('bubblesList');
+const canvasLoader = document.getElementById('canvasLoader');
 
 // App State
 let currentProject = '';
@@ -524,6 +525,7 @@ activeImage.addEventListener('load', () => {
 });
 
 async function renderTypesetImage() {
+  canvasLoader.style.display = 'flex';
   const originalSrc = activeImage.src;
   const canvas = document.createElement('canvas');
   canvas.width = activeImage.naturalWidth;
@@ -579,6 +581,7 @@ async function renderTypesetImage() {
   });
   
   activeImage.src = canvas.toDataURL('image/jpeg', 0.95);
+  canvasLoader.style.display = 'none';
 }
 
 function sampleBubbleBackground(ctx, x, y, w, h) {
