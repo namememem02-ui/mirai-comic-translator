@@ -37,6 +37,10 @@ window.api.getConfig().then((cfg) => {
     keyStatus.classList.add('disconnected');
     txt.textContent = 'ยังไม่ได้ตั้งค่า API Key';
   }
+
+  if (cfg.lastFolderPath) {
+    loadFolder(cfg.lastFolderPath, true);
+  }
 });
 
 // 2. Drag & Drop & Select Handlers
@@ -80,10 +84,12 @@ window.pathDirName = (filePath) => {
 };
 
 // 3. Load Folder logic
-async function loadFolder(folderPath) {
+async function loadFolder(folderPath, isAutoLoad = false) {
   const res = await window.api.readFolder(folderPath);
   if (res.error) {
-    alert(`ข้อผิดพลาด: ${res.error}`);
+    if (!isAutoLoad) {
+      alert(`ข้อผิดพลาด: ${res.error}`);
+    }
     return;
   }
 

@@ -78,10 +78,21 @@ ipcMain.handle('select-folder', async () => {
 
 ipcMain.handle('get-config', () => {
   const cfg = loadSharedConfig();
+  
+  let lastFolderPath = '';
+  try {
+    const lastProjectFile = path.join(PROJECTS_DIR, 'last_project.json');
+    if (fs.existsSync(lastProjectFile)) {
+      const data = fs.readFileSync(lastProjectFile, 'utf8');
+      lastFolderPath = JSON.parse(data).lastFolderPath || '';
+    }
+  } catch (err) {}
+
   return {
     apiKey: cfg.apiKey || '',
     hasKey: !!cfg.apiKey,
-    apiKeyMasked: cfg.apiKey ? `${cfg.apiKey.slice(0, 6)}…` : ''
+    apiKeyMasked: cfg.apiKey ? `${cfg.apiKey.slice(0, 6)}…` : '',
+    lastFolderPath
   };
 });
 
@@ -118,6 +129,13 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
       chapter = match[2];
     } else {
       project = folderName.replace(/[^a-zA-Z0-9_\-]/g, '');
+    }
+
+    try {
+      const lastProjectFile = path.join(PROJECTS_DIR, 'last_project.json');
+      fs.writeFileSync(lastProjectFile, JSON.stringify({ lastFolderPath: folderPath }, null, 2), 'utf8');
+    } catch (err) {
+      console.error('Error writing last_project.json:', err);
     }
 
     return {
