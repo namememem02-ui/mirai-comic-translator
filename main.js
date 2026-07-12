@@ -48,7 +48,6 @@ function createWindow() {
     }
   });
 
-  mainWin.webContents.openDevTools();
   mainWin.loadFile('src/index.html');
 }
 
