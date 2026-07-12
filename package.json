@@ -1,0 +1,14 @@
+{
+  "name": "comic-translator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "แปลการ์ตูนและคอมมิกแบบทั้งตอนด้วย Gemini AI (ComicTranslator)",
+  "main": "main.js",
+  "author": "suppo",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

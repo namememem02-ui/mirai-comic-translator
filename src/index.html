@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <title>ComicTranslator — แปลการ์ตูนอัจฉริยะ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-dark-sleek">
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-area">
+      <span class="emblem">🧪</span>
+      <h1 class="app-title">ComicTranslator</h1>
+      <span class="version-tag">Phase 1 MVP</span>
+    </div>
+    <div id="keyStatus" class="key-status checking">
+      <span class="status-dot"></span>
+      <span class="status-text">กำลังตรวจสอบ API Key...</span>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="workspace">
+
+    <!-- Column 1: Explorer Sidebar (Left) -->
+    <section class="panel explorer-panel">
+      <div class="panel-header">
+        <h2>คลังหน้าการ์ตูน</h2>
+      </div>
+      
+      <!-- Drag & Drop / Upload Zone -->
+      <div id="dropZone" class="drop-zone">
+        <div class="drop-content">
+          <span class="drop-icon">📂</span>
+          <p class="drop-title">ลากโฟลเดอร์การ์ตูนมาวางที่นี่</p>
+          <p class="drop-sub">หรือกดเปิดโฟลเดอร์</p>
+          <input type="file" id="folderInput" webkitdirectory directory style="display: none;" />
+        </div>
+      </div>
+
+      <!-- Project Info -->
+      <div id="projectInfo" class="project-info" style="display: none;">
+        <div class="info-row">
+          <span class="label">เรื่อง:</span>
+          <span id="projName" class="value">OnePiece</span>
+        </div>
+        <div class="info-row">
+          <span class="label">ตอนที่:</span>
+          <span id="projChapter" class="value">1123</span>
+        </div>
+      </div>
+
+      <!-- Thumbnails Grid -->
+      <div id="thumbnailsList" class="thumbnails-list"></div>
+    </section>
+
+    <!-- Column 2: Viewport Center -->
+    <section class="panel viewport-panel">
+      <div class="panel-header viewport-header">
+        <h2 id="activePageTitle">กรุณาเลือกหน้าการ์ตูน</h2>
+        <div class="viewport-actions">
+          <button id="translatePageBtn" class="btn btn-primary" disabled>
+            ⚡ แปลหน้านี้ด้วย Gemini
+          </button>
+        </div>
+      </div>
+      <div class="canvas-wrapper">
+        <div id="viewportContainer" class="viewport-container" style="display: none;">
+          <img id="activeImage" src="" alt="Manga Page" />
+          <!-- Overlay SVG for bubble bounding box highlights -->
+          <svg id="bubbleOverlay" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+        </div>
+        <div id="placeholderView" class="placeholder-view">
+          <span class="placeholder-icon">🖼️</span>
+          <p>เลือกไฟล์ภาพการ์ตูนด้านซ้ายเพื่อเปิดดู</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Column 3: Editor Sidebar (Right) -->
+    <section class="panel editor-panel">
+      
+      <!-- Glossary / Memory Tab -->
+      <div class="editor-section glossary-section">
+        <div class="section-header">
+          <h3>🧠 ความจำโปรเจกต์ (Glossary / Character Profile)</h3>
+        </div>
+        <div class="glossary-body">
+          <div class="glossary-row-header">
+            <span>คำศัพท์อังกฤษ (En)</span>
+            <span>คำแปลไทย (Th)</span>
+          </div>
+          <div id="glossaryList" class="glossary-list">
+            <!-- Dynamically populated glossary words -->
+          </div>
+          <button id="addGlossaryBtn" class="btn btn-secondary btn-sm">➕ เพิ่มคำจำใหม่</button>
+        </div>
+      </div>
+
+      <!-- Dialogue Bubbles List Tab -->
+      <div class="editor-section translation-section">
+        <div class="section-header">
+          <h3>📝 รายการบทสนทนา (Dialogue Bubbles)</h3>
+        </div>
+        <div id="bubblesList" class="bubbles-list">
+          <div class="no-bubbles-placeholder">
+            <p>ยังไม่มีข้อมูลคำแปลหน้านี้</p>
+            <p class="sub">กดปุ่มแปลภาษาด้านบนเพื่อเรียกใช้ Gemini</p>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+</body>
+</html>
