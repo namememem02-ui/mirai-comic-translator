@@ -542,8 +542,7 @@ function renderTypesetImage() {
     const h = y2 - y1;
     
     const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(x1, y1, w, h);
+    drawSmoothErase(ctx, x1, y1, w, h, bgColor);
     
     if (bubble.translated_text) {
       drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h);
@@ -632,6 +631,27 @@ function wrapThaiText(ctx, text, maxWidth) {
   return lines;
 }
 
+function drawSmoothErase(ctx, x, y, w, h, bgColor) {
+  ctx.save();
+  const padding = Math.max(3, Math.min(8, w * 0.05, h * 0.05));
+  const ex = x + padding;
+  const ey = y + padding;
+  const ew = w - padding * 2;
+  const eh = h - padding * 2;
+  
+  if (ew <= 0 || eh <= 0) {
+    ctx.restore();
+    return;
+  }
+  
+  ctx.filter = 'blur(4px)';
+  ctx.fillStyle = bgColor;
+  ctx.beginPath();
+  ctx.roundRect(ex, ey, ew, eh, Math.min(ew, eh) * 0.25);
+  ctx.fill();
+  ctx.restore();
+}
+
 exportChapterBtn.addEventListener('click', async () => {
   exportChapterBtn.disabled = true;
   const oldText = exportChapterBtn.textContent;
@@ -673,8 +693,7 @@ exportChapterBtn.addEventListener('click', async () => {
           const h = y2 - y1;
           
           const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
-          ctx.fillStyle = bgColor;
-          ctx.fillRect(x1, y1, w, h);
+          drawSmoothErase(ctx, x1, y1, w, h, bgColor);
           
           if (bubble.translated_text) {
             drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h);
