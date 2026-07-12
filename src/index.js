@@ -545,7 +545,7 @@ function renderTypesetImage() {
     drawSmoothErase(ctx, x1, y1, w, h, bgColor);
     
     if (bubble.translated_text) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h);
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor);
     }
   });
   
@@ -555,10 +555,10 @@ function renderTypesetImage() {
 function sampleBubbleBackground(ctx, x, y, w, h) {
   try {
     const pixels = [
-      ctx.getImageData(Math.max(0, Math.round(x + 2)), Math.max(0, Math.round(y + 2)), 1, 1).data,
-      ctx.getImageData(Math.min(ctx.canvas.width - 1, Math.round(x + w - 2)), Math.max(0, Math.round(y + 2)), 1, 1).data,
-      ctx.getImageData(Math.max(0, Math.round(x + 2)), Math.min(ctx.canvas.height - 1, Math.round(y + h - 2)), 1, 1).data,
-      ctx.getImageData(Math.min(ctx.canvas.width - 1, Math.round(x + w - 2)), Math.min(ctx.canvas.height - 1, Math.round(y + h - 2)), 1, 1).data
+      ctx.getImageData(Math.max(0, Math.round(x + w * 0.15)), Math.max(0, Math.round(y + h * 0.15)), 1, 1).data,
+      ctx.getImageData(Math.min(ctx.canvas.width - 1, Math.round(x + w * 0.85)), Math.max(0, Math.round(y + h * 0.15)), 1, 1).data,
+      ctx.getImageData(Math.max(0, Math.round(x + w * 0.15)), Math.min(ctx.canvas.height - 1, Math.round(y + h * 0.85)), 1, 1).data,
+      ctx.getImageData(Math.min(ctx.canvas.width - 1, Math.round(x + w * 0.85)), Math.min(ctx.canvas.height - 1, Math.round(y + h * 0.85)), 1, 1).data
     ];
     
     let r = 0, g = 0, b = 0;
@@ -574,23 +574,36 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
     if (r > 220 && g > 220 && b > 220) {
       return '#ffffff';
     }
+    if (r < 35 && g < 35 && b < 35) {
+      return '#000000';
+    }
     return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
   } catch (e) {
     return '#ffffff';
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h) {
-  ctx.fillStyle = '#000000';
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff') {
+  // Check contrast of background to choose black or white text
+  let textColor = '#000000';
+  if (bgColor.startsWith('#')) {
+    const r = parseInt(bgColor.slice(1, 3), 16) || 0;
+    const g = parseInt(bgColor.slice(3, 5), 16) || 0;
+    const b = parseInt(bgColor.slice(5, 7), 16) || 0;
+    const luminance = r * 0.299 + g * 0.587 + b * 0.114;
+    if (luminance < 130) textColor = '#ffffff';
+  }
+
+  ctx.fillStyle = textColor;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
-  let fontSize = Math.max(12, Math.round(h * 0.16));
-  if (fontSize > 26) fontSize = 26;
+  let fontSize = Math.max(14, Math.round(h * 0.18));
+  if (fontSize > 40) fontSize = 40;
   
   let lines = [];
   
-  while (fontSize >= 8) {
+  while (fontSize >= 6) {
     ctx.font = `bold ${fontSize}px 'Sarabun', 'Segoe UI', sans-serif`;
     lines = wrapThaiText(ctx, text, w * 0.85);
     const totalHeight = lines.length * (fontSize * 1.25);
@@ -696,7 +709,7 @@ exportChapterBtn.addEventListener('click', async () => {
           drawSmoothErase(ctx, x1, y1, w, h, bgColor);
           
           if (bubble.translated_text) {
-            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h);
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor);
           }
         });
       }
