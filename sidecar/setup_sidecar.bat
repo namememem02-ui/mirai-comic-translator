@@ -33,7 +33,7 @@ call .venv\Scripts\activate.bat
 
 echo [⚙️] Installing required Python libraries (this may take a few minutes)...
 python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m pip install --only-binary=:all: -r requirements.txt
 if errorlevel 1 goto INSTALL_FAILED
 goto START_SERVER
 
