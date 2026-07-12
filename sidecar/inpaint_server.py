@@ -2,10 +2,21 @@ import io
 import numpy as np
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 from simple_lama_inpainting import SimpleLama
 
 app = FastAPI(title="LaMa Inpainting Sidecar API")
+
+# Enable CORS for Electron frontend requests
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 lama = None
 
 @app.on_event("startup")
