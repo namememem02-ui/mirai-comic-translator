@@ -27,6 +27,7 @@ let images = [];
 let activeIndex = -1;
 let activePageTranslation = [];
 let projectGlossary = {}; // { eng: thai }
+const cleanedBgCache = {}; // { pageName: dataUrl }
 
 // 1. Initialize API Config
 window.api.getConfig().then((cfg) => {
@@ -363,6 +364,9 @@ translatePageBtn.addEventListener('click', async () => {
 
     activePageTranslation = result;
     
+    // Invalidate cache since new translation might contain different bounding boxes/masks
+    delete cleanedBgCache[activePage.name];
+    
     // Save translation
     await saveCurrentPageTranslation();
     
@@ -409,6 +413,9 @@ translateAllBtn.addEventListener('click', async () => {
       });
       
       activePageTranslation = result;
+      
+      // Invalidate cache for this page
+      delete cleanedBgCache[img.name];
       
       await window.api.savePageTranslation({
         project: currentProject,
@@ -534,20 +541,44 @@ async function renderTypesetImage() {
   
   let cleanedImgElement = activeImage;
   let objectUrlToCleanup = null;
+  const activePage = images[activeIndex];
+  const cacheKey = activePage ? activePage.name : null;
   
-  try {
-    const inpaintedBlob = await runAIInpaint(originalSrc, activePageTranslation, canvas.width, canvas.height);
-    objectUrlToCleanup = URL.createObjectURL(inpaintedBlob);
-    
+  if (cacheKey && cleanedBgCache[cacheKey]) {
+    // Cache HIT: Load clean background instantly
     const cleanImg = new Image();
-    cleanImg.src = objectUrlToCleanup;
-    await new Promise((resolve, reject) => {
+    cleanImg.src = cleanedBgCache[cacheKey];
+    await new Promise((resolve) => {
       cleanImg.onload = resolve;
-      cleanImg.onerror = reject;
+      cleanImg.onerror = resolve;
     });
     cleanedImgElement = cleanImg;
-  } catch (err) {
-    console.warn('[⚠️] AI Inpainting failed or offline. Falling back to smooth flat color erase. Error:', err.message);
+  } else {
+    // Cache MISS: Run PyTorch AI Inpainter and store in cache
+    try {
+      const inpaintedBlob = await runAIInpaint(originalSrc, activePageTranslation, canvas.width, canvas.height);
+      objectUrlToCleanup = URL.createObjectURL(inpaintedBlob);
+      
+      const cleanImg = new Image();
+      cleanImg.src = objectUrlToCleanup;
+      await new Promise((resolve, reject) => {
+        cleanImg.onload = resolve;
+        cleanImg.onerror = reject;
+      });
+      cleanedImgElement = cleanImg;
+      
+      // Store clean base64 image in memory cache
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = canvas.width;
+      tempCanvas.height = canvas.height;
+      const tctx = tempCanvas.getContext('2d');
+      tctx.drawImage(cleanedImgElement, 0, 0);
+      if (cacheKey) {
+        cleanedBgCache[cacheKey] = tempCanvas.toDataURL('image/jpeg', 0.95);
+      }
+    } catch (err) {
+      console.warn('[⚠️] AI Inpainting failed or offline. Falling back to smooth flat color erase. Error:', err.message);
+    }
   }
   
   ctx.drawImage(cleanedImgElement, 0, 0);
