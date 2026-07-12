@@ -169,7 +169,7 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
     `  {"bubble_id": 1, "box_2d": [100, 200, 250, 450], "original_text": "Hello", "translated_text": "สวัสดี"}\n` +
     `]`;
 
-  const models = ['gemini-1.5-flash', 'gemini-2.5-flash', 'gemini-1.5-pro'];
+  const models = ['gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-2.5-pro'];
   let lastErr = null;
 
   for (const model of models) {
@@ -206,12 +206,12 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = data?.error?.message || `HTTP ${res.status}`;
-        if (res.status === 404 || /not found|not supported/i.test(msg)) {
-          const e = new Error(msg);
-          e.retryNextModel = true;
-          throw e;
+        if (/API key|invalid key/i.test(msg) || res.status === 403) {
+          throw new Error(msg);
         }
-        throw new Error(msg);
+        const e = new Error(msg);
+        e.retryNextModel = true;
+        throw e;
       }
 
       const outputText = (data.candidates?.[0]?.content?.parts || [])
