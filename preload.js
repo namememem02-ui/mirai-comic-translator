@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   savePageTranslation: (args) => ipcRenderer.invoke('save-page-translation', args),
   loadPageTranslation: (args) => ipcRenderer.invoke('load-page-translation', args),
   saveMemory: (args) => ipcRenderer.invoke('save-memory', args),
-  loadMemory: (args) => ipcRenderer.invoke('load-memory', args)
+  loadMemory: (args) => ipcRenderer.invoke('load-memory', args),
+  saveCustomMask: (args) => ipcRenderer.invoke('save-custom-mask', args),
+  loadCustomMask: (args) => ipcRenderer.invoke('load-custom-mask', args),
+  clearCustomMask: (args) => ipcRenderer.invoke('clear-custom-mask', args)
 });

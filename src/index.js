@@ -200,6 +200,40 @@ async function selectPage(idx) {
     renderPlaceholder();
   }
 
+  // Show studio toolbar and reset tool to select mode
+  studioToolbar.style.display = 'flex';
+  if (typeof switchTool === 'function') switchTool('select');
+
+  // Load custom mask when raw image is loaded
+  activeImage.onload = async () => {
+    if (activeImage.src.startsWith('data:')) return;
+    
+    brushMaskCanvas.width = activeImage.naturalWidth || 800;
+    brushMaskCanvas.height = activeImage.naturalHeight || 1200;
+    
+    const ctx = brushMaskCanvas.getContext('2d');
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, brushMaskCanvas.width, brushMaskCanvas.height);
+    
+    try {
+      const maskRes = await window.api.loadCustomMask({
+        project: currentProject,
+        chapter: currentChapter,
+        pageName: activePage.name
+      });
+      if (maskRes && maskRes.exists) {
+        const maskImg = new Image();
+        const formattedPath = maskRes.absolutePath.replace(/\\/g, '/');
+        maskImg.src = `file:///${formattedPath}`;
+        maskImg.onload = () => {
+          ctx.drawImage(maskImg, 0, 0);
+        };
+      }
+    } catch (err) {
+      console.warn('[⚠️] Failed to load custom mask:', err);
+    }
+  };
+
   // Render Image
   activeImage.src = activePage.fileUrl;
   placeholderView.style.display = 'none';
@@ -219,9 +253,14 @@ function renderPageTranslation() {
   }
 
   activePageTranslation.forEach((bubble) => {
-    // 1. Draw SVG Bounding Box
+    // 1. Draw SVG Bounding Box Group with Resize Handle
     if (bubble.box_2d && bubble.box_2d.length === 4) {
       const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+      
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'bubble-group');
+      g.setAttribute('data-id', bubble.bubble_id);
+      
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       rect.setAttribute('x', xmin);
       rect.setAttribute('y', ymin);
@@ -229,12 +268,31 @@ function renderPageTranslation() {
       rect.setAttribute('height', ymax - ymin);
       rect.setAttribute('class', 'bubble-rect');
       rect.setAttribute('data-id', bubble.bubble_id);
+      rect.style.fill = 'rgba(168, 85, 247, 0.15)';
+      rect.style.stroke = '#a855f7';
+      rect.style.strokeWidth = '2px';
+      rect.style.cursor = 'move';
       
       rect.addEventListener('mouseenter', () => highlightCard(bubble.bubble_id));
       rect.addEventListener('mouseleave', () => unhighlightCard(bubble.bubble_id));
       rect.addEventListener('click', () => focusCard(bubble.bubble_id));
 
-      bubbleOverlay.appendChild(rect);
+      g.appendChild(rect);
+
+      // Circle handle for resizing (placed at bottom-right corner)
+      const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      handle.setAttribute('cx', xmax);
+      handle.setAttribute('cy', ymax);
+      handle.setAttribute('r', 8);
+      handle.setAttribute('class', 'bubble-resize-handle');
+      handle.setAttribute('data-id', bubble.bubble_id);
+      handle.style.fill = '#a855f7';
+      handle.style.stroke = '#ffffff';
+      handle.style.strokeWidth = '2px';
+      handle.style.cursor = 'se-resize';
+      
+      g.appendChild(handle);
+      bubbleOverlay.appendChild(g);
     }
 
     // 2. Draw Dialogue Editor Card
@@ -944,6 +1002,12 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
     mctx.fill();
   });
   
+  // Combine manual brush strokes overlay
+  const brushMaskCanvas = document.getElementById('brushMaskCanvas');
+  if (brushMaskCanvas) {
+    mctx.drawImage(brushMaskCanvas, 0, 0);
+  }
+  
   const originalBlob = await fetch(imgUrl).then(r => r.blob());
   const maskBlob = await new Promise(resolve => maskCanvas.toBlob(resolve, 'image/png'));
   
@@ -1062,3 +1126,350 @@ exportChapterBtn.addEventListener('click', async () => {
     exportChapterBtn.textContent = oldText;
   }
 });
+
+// ==========================================================
+// Phase 3: Typesetting Studio Interactive Tools Implementation
+// ==========================================================
+
+let currentTool = 'select'; // 'select', 'add', 'brush'
+let isDragging = false;
+let isResizing = false;
+let isCreating = false;
+let isPainting = false;
+let activeBubbleId = null;
+let dragStartX = 0;
+let dragStartY = 0;
+let initialBox = null;
+
+// Brush state
+let brushSize = 20;
+let lastBrushX = 0;
+let lastBrushY = 0;
+
+// Grab DOM elements
+const studioToolbar = document.getElementById('studioToolbar');
+const toolSelectBtn = document.getElementById('toolSelectBtn');
+const toolAddBtn = document.getElementById('toolAddBtn');
+const toolBrushBtn = document.getElementById('toolBrushBtn');
+const brushOptions = document.getElementById('brushOptions');
+const brushSizeRange = document.getElementById('brushSizeRange');
+const brushSizeVal = document.getElementById('brushSizeVal');
+const clearBrushBtn = document.getElementById('clearBrushBtn');
+const brushMaskCanvas = document.getElementById('brushMaskCanvas');
+
+// 1. Tool Switcher
+function switchTool(tool) {
+  currentTool = tool;
+  
+  // Highlight active buttons
+  toolSelectBtn.className = (tool === 'select') ? 'btn btn-tool active' : 'btn btn-tool';
+  toolAddBtn.className = (tool === 'add') ? 'btn btn-tool active' : 'btn btn-tool';
+  toolBrushBtn.className = (tool === 'brush') ? 'btn btn-tool active' : 'btn btn-tool';
+  
+  // Apply styled color overrides to btn-tool dynamically
+  const btns = [toolSelectBtn, toolAddBtn, toolBrushBtn];
+  btns.forEach(btn => {
+    if (btn.className.includes('active')) {
+      btn.style.background = '#3b82f6';
+      btn.style.color = '#ffffff';
+      btn.style.borderColor = '#3b82f6';
+    } else {
+      btn.style.background = '#1e293b';
+      btn.style.color = '#94a3b8';
+      btn.style.borderColor = '#334155';
+    }
+  });
+  
+  // Toggle Options & pointer events
+  brushOptions.style.display = (tool === 'brush') ? 'flex' : 'none';
+  
+  if (tool === 'brush') {
+    brushMaskCanvas.style.display = 'block';
+    brushMaskCanvas.style.pointerEvents = 'auto';
+    bubbleOverlay.style.pointerEvents = 'none';
+  } else {
+    brushMaskCanvas.style.display = 'none';
+    brushMaskCanvas.style.pointerEvents = 'none';
+    bubbleOverlay.style.pointerEvents = 'auto';
+  }
+}
+
+toolSelectBtn.addEventListener('click', () => switchTool('select'));
+toolAddBtn.addEventListener('click', () => switchTool('add'));
+toolBrushBtn.addEventListener('click', () => switchTool('brush'));
+
+brushSizeRange.addEventListener('input', (e) => {
+  brushSize = parseInt(e.target.value);
+  brushSizeVal.textContent = brushSize;
+});
+
+// Clear custom mask
+clearBrushBtn.addEventListener('click', async () => {
+  const activePage = images[activeIndex];
+  if (!activePage) return;
+  
+  const ctx = brushMaskCanvas.getContext('2d');
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, brushMaskCanvas.width, brushMaskCanvas.height);
+  
+  try {
+    await window.api.clearCustomMask({
+      project: currentProject,
+      chapter: currentChapter,
+      pageName: activePage.name
+    });
+  } catch (err) {
+    console.warn('[⚠️] Failed to clear mask from disk:', err);
+  }
+  
+  delete cleanedBgCache[activePage.name];
+  if (isPreviewMode) renderTypesetImage();
+});
+
+// 2. Coordinate normalizer
+function getSVGCoords(e) {
+  const rect = bubbleOverlay.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * 1000;
+  const y = ((e.clientY - rect.top) / rect.height) * 1000;
+  return { x: Math.max(0, Math.min(1000, x)), y: Math.max(0, Math.min(1000, y)) };
+}
+
+// 3. Mouse Event Listeners for Select/Add Bubble modes
+bubbleOverlay.addEventListener('mousedown', (e) => {
+  if (currentTool === 'brush') return;
+  
+  const target = e.target;
+  const activePage = images[activeIndex];
+  if (!activePage) return;
+
+  if (currentTool === 'add') {
+    isCreating = true;
+    const coords = getSVGCoords(e);
+    dragStartX = coords.x;
+    dragStartY = coords.y;
+    
+    let tempRect = document.getElementById('tempAddRect');
+    if (!tempRect) {
+      tempRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      tempRect.setAttribute('id', 'tempAddRect');
+      tempRect.style.fill = 'rgba(168, 85, 247, 0.1)';
+      tempRect.style.stroke = '#a855f7';
+      tempRect.style.strokeWidth = '2px';
+      tempRect.style.strokeDasharray = '4,4';
+      bubbleOverlay.appendChild(tempRect);
+    }
+    tempRect.setAttribute('x', dragStartX);
+    tempRect.setAttribute('y', dragStartY);
+    tempRect.setAttribute('width', 0);
+    tempRect.setAttribute('height', 0);
+    tempRect.style.display = 'block';
+    return;
+  }
+  
+  if (target.classList.contains('bubble-resize-handle')) {
+    isResizing = true;
+    activeBubbleId = parseInt(target.getAttribute('data-id'));
+    const bubble = activePageTranslation.find(b => b.bubble_id === activeBubbleId);
+    if (bubble) {
+      initialBox = [...bubble.box_2d];
+      const coords = getSVGCoords(e);
+      dragStartX = coords.x;
+      dragStartY = coords.y;
+    }
+    e.stopPropagation();
+  } else if (target.classList.contains('bubble-rect')) {
+    isDragging = true;
+    activeBubbleId = parseInt(target.getAttribute('data-id'));
+    const bubble = activePageTranslation.find(b => b.bubble_id === activeBubbleId);
+    if (bubble) {
+      initialBox = [...bubble.box_2d];
+      const coords = getSVGCoords(e);
+      dragStartX = coords.x;
+      dragStartY = coords.y;
+    }
+    e.stopPropagation();
+  }
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!isDragging && !isResizing && !isCreating) return;
+  
+  const coords = getSVGCoords(e);
+  
+  if (isCreating) {
+    const tempRect = document.getElementById('tempAddRect');
+    if (tempRect) {
+      const x = Math.min(dragStartX, coords.x);
+      const y = Math.min(dragStartY, coords.y);
+      const w = Math.abs(coords.x - dragStartX);
+      const h = Math.abs(coords.y - dragStartY);
+      tempRect.setAttribute('x', x);
+      tempRect.setAttribute('y', y);
+      tempRect.setAttribute('width', w);
+      tempRect.setAttribute('height', h);
+    }
+    return;
+  }
+  
+  const dx = coords.x - dragStartX;
+  const dy = coords.y - dragStartY;
+  
+  const bubble = activePageTranslation.find(b => b.bubble_id === activeBubbleId);
+  if (!bubble || !initialBox) return;
+  
+  if (isDragging) {
+    const [ymin, xmin, ymax, xmax] = initialBox;
+    const w = xmax - xmin;
+    const h = ymax - ymin;
+    
+    const newX = Math.max(0, Math.min(1000 - w, xmin + dx));
+    const newY = Math.max(0, Math.min(1000 - h, ymin + dy));
+    
+    bubble.box_2d = [
+      Math.round(newY),
+      Math.round(newX),
+      Math.round(newY + h),
+      Math.round(newX + w)
+    ];
+    
+    updateSVGOverlayOnly();
+    if (isPreviewMode) renderTypesetImage();
+  } else if (isResizing) {
+    const [ymin, xmin, ymax, xmax] = initialBox;
+    const newXmax = Math.max(xmin + 20, Math.min(1000, xmax + dx));
+    const newYmax = Math.max(ymin + 20, Math.min(1000, ymax + dy));
+    
+    bubble.box_2d[2] = Math.round(newYmax);
+    bubble.box_2d[3] = Math.round(newXmax);
+    
+    updateSVGOverlayOnly();
+    if (isPreviewMode) renderTypesetImage();
+  }
+});
+
+window.addEventListener('mouseup', async () => {
+  if (!isDragging && !isResizing && !isCreating) return;
+  
+  const activePage = images[activeIndex];
+  if (!activePage) return;
+  
+  if (isCreating) {
+    isCreating = false;
+    const tempRect = document.getElementById('tempAddRect');
+    if (tempRect) {
+      tempRect.style.display = 'none';
+      const x = parseFloat(tempRect.getAttribute('x'));
+      const y = parseFloat(tempRect.getAttribute('y'));
+      const w = parseFloat(tempRect.getAttribute('width'));
+      const h = parseFloat(tempRect.getAttribute('height'));
+      
+      if (w > 15 && h > 15) {
+        const ymin = Math.round(y);
+        const xmin = Math.round(x);
+        const ymax = Math.round(y + h);
+        const xmax = Math.round(x + w);
+        
+        const newId = activePageTranslation.length > 0
+          ? Math.max(...activePageTranslation.map(b => b.bubble_id)) + 1
+          : 1;
+          
+        activePageTranslation.push({
+          bubble_id: newId,
+          box_2d: [ymin, xmin, ymax, xmax],
+          original_text: '(สร้างกล่องแมนนวล)',
+          translated_text: 'กรอกคำแปลบทสนทนาใหม่ตรงนี้'
+        });
+        
+        delete cleanedBgCache[activePage.name];
+        await saveCurrentPageTranslation();
+        renderPageTranslation();
+        if (isPreviewMode) renderTypesetImage();
+        
+        setTimeout(() => {
+          focusCard(newId);
+        }, 100);
+      }
+    }
+    return;
+  }
+  
+  isDragging = false;
+  isResizing = false;
+  activeBubbleId = null;
+  initialBox = null;
+  
+  delete cleanedBgCache[activePage.name];
+  await saveCurrentPageTranslation();
+  renderPageTranslation();
+  if (isPreviewMode) renderTypesetImage();
+});
+
+// 4. Brush drawing event listeners on brushMaskCanvas
+function getCanvasCoords(e) {
+  const rect = brushMaskCanvas.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * brushMaskCanvas.width;
+  const y = ((e.clientY - rect.top) / rect.height) * brushMaskCanvas.height;
+  return { x, y };
+}
+
+brushMaskCanvas.addEventListener('mousedown', (e) => {
+  if (currentTool !== 'brush') return;
+  isPainting = true;
+  const coords = getCanvasCoords(e);
+  lastBrushX = coords.x;
+  lastBrushY = coords.y;
+  
+  drawBrushStroke(coords.x, coords.y);
+});
+
+brushMaskCanvas.addEventListener('mousemove', (e) => {
+  if (currentTool !== 'brush' || !isPainting) return;
+  const coords = getCanvasCoords(e);
+  drawBrushStroke(coords.x, coords.y, true);
+});
+
+window.addEventListener('mouseup', async () => {
+  if (isPainting) {
+    isPainting = false;
+    
+    const activePage = images[activeIndex];
+    if (activePage) {
+      const dataUrl = brushMaskCanvas.toDataURL('image/png');
+      try {
+        await window.api.saveCustomMask({
+          project: currentProject,
+          chapter: currentChapter,
+          pageName: activePage.name,
+          dataUrl: dataUrl
+        });
+      } catch (err) {
+        console.warn('[⚠️] Failed to save custom mask:', err);
+      }
+      
+      delete cleanedBgCache[activePage.name];
+      if (isPreviewMode) renderTypesetImage();
+    }
+  }
+});
+
+function drawBrushStroke(x, y, isMove = false) {
+  const ctx = brushMaskCanvas.getContext('2d');
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = brushSize;
+  
+  ctx.beginPath();
+  if (isMove) {
+    ctx.moveTo(lastBrushX, lastBrushY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  } else {
+    ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  }
+  
+  lastBrushX = x;
+  lastBrushY = y;
+}
