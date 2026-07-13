@@ -1,3 +1,12 @@
+window.addEventListener('error', (e) => {
+  const errorMsg = `${e.message} at ${e.filename}:${e.lineno}:${e.colno}\nStack: ${e.error ? e.error.stack : ''}\n\n`;
+  alert(`Renderer Error: ${errorMsg}`);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  const errorMsg = `Unhandled Rejection: ${e.reason}\nStack: ${e.reason ? e.reason.stack : ''}\n\n`;
+  alert(`Renderer Unhandled Rejection: ${errorMsg}`);
+});
+
 // UI Elements
 const dropZone = document.getElementById('dropZone');
 const folderInput = document.getElementById('folderInput');
@@ -5,6 +14,9 @@ const keyStatus = document.getElementById('keyStatus');
 const projectInfo = document.getElementById('projectInfo');
 const projName = document.getElementById('projName');
 const projChapter = document.getElementById('projChapter');
+const projChapterInput = document.getElementById('projChapter');
+const refreshProjectsBtn = document.getElementById('refreshProjectsBtn');
+const addBubbleTextBtn = document.getElementById('addBubbleTextBtn');
 const thumbnailsList = document.getElementById('thumbnailsList');
 const activePageTitle = document.getElementById('activePageTitle');
 const translatePageBtn = document.getElementById('translatePageBtn');
@@ -1632,7 +1644,7 @@ exportChapterBtn.addEventListener('click', async () => {
             : '#ffffff';
             
           if (bubble.translated_text && !bubble.hidden) {
-            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color, bubble.outline);
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate);
           }
         });
       }
@@ -1689,9 +1701,6 @@ let lastPaintX = 0;
 let lastPaintY = 0;
 
 // Grab DOM elements
-const refreshProjectsBtn = document.getElementById('refreshProjectsBtn');
-const addBubbleTextBtn = document.getElementById('addBubbleTextBtn');
-const projChapterInput = document.getElementById('projChapter');
 
 const studioToolbar = document.getElementById('studioToolbar');
 const toolSelectBtn = document.getElementById('toolSelectBtn');
