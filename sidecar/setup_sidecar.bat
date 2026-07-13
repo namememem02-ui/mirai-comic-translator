@@ -6,7 +6,7 @@ echo [🧠] Checking Python installation...
 python --version >nul 2>&1
 if errorlevel 1 goto NO_PYTHON
 
-if not exist .venv goto CREATE_VENV
+if not exist "%USERPROFILE%\ct_venv" goto CREATE_VENV
 goto RUN_VENV
 
 :NO_PYTHON
@@ -17,8 +17,8 @@ pause
 exit /b 1
 
 :CREATE_VENV
-echo [📦] Creating Virtual Environment (.venv)...
-python -m venv .venv
+echo [📦] Creating Virtual Environment in User Profile (ct_venv)...
+python -m venv "%USERPROFILE%\ct_venv"
 if errorlevel 1 goto VENV_FAILED
 goto RUN_VENV
 
@@ -29,7 +29,7 @@ exit /b 1
 
 :RUN_VENV
 echo [🚀] Activating Virtual Environment...
-call .venv\Scripts\activate.bat
+call "%USERPROFILE%\ct_venv\Scripts\activate.bat"
 
 echo [⚙️] Installing required Python libraries (this may take a few minutes)...
 python -m pip install --upgrade pip
