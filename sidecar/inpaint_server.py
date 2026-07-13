@@ -108,8 +108,10 @@ async def inpaint(
                 # Inpaint patch
                 crop_result_pil = lama(crop_img_pil, crop_mask_pil)
                 
-                # Paste back
+                # Paste back, ensuring dimensions match original crop boundaries to prevent ValueError
                 crop_result_np = np.array(crop_result_pil)
+                if crop_result_np.shape[0] != (y2 - y1) or crop_result_np.shape[1] != (x2 - x1):
+                    crop_result_np = cv2.resize(crop_result_np, (x2 - x1, y2 - y1), interpolation=cv2.INTER_AREA)
                 result_np[y1:y2, x1:x2] = crop_result_np
                 
             result_pil = Image.fromarray(result_np)
