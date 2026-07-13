@@ -317,12 +317,127 @@ function renderPageTranslation() {
     controlsRow.appendChild(fontLabel);
     controlsRow.appendChild(sizeInput);
 
+    // Box position & size adjustment controls row
+    const adjustRow = document.createElement('div');
+    adjustRow.className = 'card-adjust-row';
+    adjustRow.style.display = 'flex';
+    adjustRow.style.alignItems = 'center';
+    adjustRow.style.flexWrap = 'wrap';
+    adjustRow.style.gap = '6px';
+    adjustRow.style.marginTop = '6px';
+    
+    const adjustLabel = document.createElement('span');
+    adjustLabel.textContent = 'ปรับกรอบ:';
+    adjustLabel.style.fontSize = '12px';
+    adjustLabel.style.color = '#94a3b8';
+    adjustLabel.style.marginRight = '4px';
+    
+    const createBtn = (text, onClick, title) => {
+      const btn = document.createElement('button');
+      btn.textContent = text;
+      btn.title = title;
+      btn.style.padding = '2px 6px';
+      btn.style.fontSize = '11px';
+      btn.style.background = '#334155';
+      btn.style.border = 'none';
+      btn.style.color = '#f1f5f9';
+      btn.style.borderRadius = '3px';
+      btn.style.cursor = 'pointer';
+      btn.addEventListener('click', () => {
+        onClick();
+        delete cleanedBgCache[activePage.name];
+        saveCurrentPageTranslation();
+        updateSVGOverlayOnly();
+        if (isPreviewMode) renderTypesetImage();
+      });
+      return btn;
+    };
+    
+    const moveAmount = 15;
+    const sizeAmount = 15;
+    
+    const btnUp = createBtn('🔼', () => {
+      bubble.box_2d[0] = Math.max(0, bubble.box_2d[0] - moveAmount);
+      bubble.box_2d[2] = Math.max(0, bubble.box_2d[2] - moveAmount);
+    }, 'เลื่อนขึ้น');
+    
+    const btnDown = createBtn('🔽', () => {
+      bubble.box_2d[0] = Math.min(1000, bubble.box_2d[0] + moveAmount);
+      bubble.box_2d[2] = Math.min(1000, bubble.box_2d[2] + moveAmount);
+    }, 'เลื่อนลง');
+    
+    const btnLeft = createBtn('◀️', () => {
+      bubble.box_2d[1] = Math.max(0, bubble.box_2d[1] - moveAmount);
+      bubble.box_2d[3] = Math.max(0, bubble.box_2d[3] - moveAmount);
+    }, 'เลื่อนซ้าย');
+    
+    const btnRight = createBtn('▶️', () => {
+      bubble.box_2d[1] = Math.min(1000, bubble.box_2d[1] + moveAmount);
+      bubble.box_2d[3] = Math.min(1000, bubble.box_2d[3] + moveAmount);
+    }, 'เลื่อนขวา');
+    
+    const btnTall = createBtn('↕️+', () => {
+      bubble.box_2d[0] = Math.max(0, bubble.box_2d[0] - sizeAmount);
+      bubble.box_2d[2] = Math.min(1000, bubble.box_2d[2] + sizeAmount);
+    }, 'ขยายแนวตั้ง');
+    
+    const btnShort = createBtn('↕️-', () => {
+      if (bubble.box_2d[2] - bubble.box_2d[0] > sizeAmount * 2) {
+        bubble.box_2d[0] += sizeAmount;
+        bubble.box_2d[2] -= sizeAmount;
+      }
+    }, 'หดแนวตั้ง');
+    
+    const btnWide = createBtn('↔️+', () => {
+      bubble.box_2d[1] = Math.max(0, bubble.box_2d[1] - sizeAmount);
+      bubble.box_2d[3] = Math.min(1000, bubble.box_2d[3] + sizeAmount);
+    }, 'ขยายแนวนอน');
+    
+    const btnNarrow = createBtn('↔️-', () => {
+      if (bubble.box_2d[3] - bubble.box_2d[1] > sizeAmount * 2) {
+        bubble.box_2d[1] += sizeAmount;
+        bubble.box_2d[3] -= sizeAmount;
+      }
+    }, 'หดแนวนอน');
+    
+    adjustRow.appendChild(adjustLabel);
+    adjustRow.appendChild(btnUp);
+    adjustRow.appendChild(btnDown);
+    adjustRow.appendChild(btnLeft);
+    adjustRow.appendChild(btnRight);
+    
+    const divider = document.createElement('span');
+    divider.style.width = '1px';
+    divider.style.height = '14px';
+    divider.style.background = '#475569';
+    divider.style.margin = '0 2px';
+    adjustRow.appendChild(divider);
+    
+    adjustRow.appendChild(btnTall);
+    adjustRow.appendChild(btnShort);
+    adjustRow.appendChild(btnWide);
+    adjustRow.appendChild(btnNarrow);
+
     card.appendChild(header);
     card.appendChild(origText);
     card.appendChild(transInput);
     card.appendChild(controlsRow);
+    card.appendChild(adjustRow);
 
     bubblesList.appendChild(card);
+  });
+}
+
+function updateSVGOverlayOnly() {
+  activePageTranslation.forEach((bubble) => {
+    const rect = bubbleOverlay.querySelector(`.bubble-rect[data-id="${bubble.bubble_id}"]`);
+    if (rect && bubble.box_2d) {
+      const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+      rect.setAttribute('x', xmin);
+      rect.setAttribute('y', ymin);
+      rect.setAttribute('width', xmax - xmin);
+      rect.setAttribute('height', ymax - ymin);
+    }
   });
 }
 
@@ -805,7 +920,6 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
   
   mctx.fillStyle = '#000000';
   mctx.fillRect(0, 0, canvasWidth, canvasHeight);
-  
   bubbles.forEach((bubble) => {
     if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
     const [ymin, xmin, ymax, xmax] = bubble.box_2d;
@@ -816,9 +930,17 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
     const w = x2 - x1;
     const h = y2 - y1;
     
+    // Pad mask slightly to capture overflow text near borders
+    const padX = Math.max(8, w * 0.04);
+    const padY = Math.max(12, h * 0.08);
+    const mx1 = x1 - padX;
+    const my1 = y1 - padY;
+    const mw = w + padX * 2;
+    const mh = h + padY * 2;
+    
     mctx.fillStyle = '#ffffff';
     mctx.beginPath();
-    mctx.roundRect(x1, y1, w, h, Math.min(w, h) * 0.2);
+    mctx.roundRect(mx1, my1, mw, mh, Math.min(mw, mh) * 0.2);
     mctx.fill();
   });
   
