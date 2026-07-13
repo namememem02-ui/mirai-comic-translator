@@ -212,8 +212,7 @@ async function selectPage(idx) {
     brushMaskCanvas.height = activeImage.naturalHeight || 1200;
     
     const ctx = brushMaskCanvas.getContext('2d');
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(0, 0, brushMaskCanvas.width, brushMaskCanvas.height);
+    ctx.clearRect(0, 0, brushMaskCanvas.width, brushMaskCanvas.height);
     
     try {
       const maskRes = await window.api.loadCustomMask({
@@ -1209,8 +1208,7 @@ clearBrushBtn.addEventListener('click', async () => {
   if (!activePage) return;
   
   const ctx = brushMaskCanvas.getContext('2d');
-  ctx.fillStyle = '#000000';
-  ctx.fillRect(0, 0, brushMaskCanvas.width, brushMaskCanvas.height);
+  ctx.clearRect(0, 0, brushMaskCanvas.width, brushMaskCanvas.height);
   
   try {
     await window.api.clearCustomMask({
