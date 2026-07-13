@@ -445,3 +445,52 @@ ipcMain.handle('list-projects', () => {
   } catch (err) {}
   return [];
 });
+
+ipcMain.handle('delete-project-mapping', (_e, { project, chapter }) => {
+  try {
+    const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
+    if (fs.existsSync(mapFile)) {
+      const data = fs.readFileSync(mapFile, 'utf8');
+      const projectsMap = JSON.parse(data || '{}');
+      delete projectsMap[`${project}/${chapter}`];
+      fs.writeFileSync(mapFile, JSON.stringify(projectsMap, null, 2), 'utf8');
+      return { success: true };
+    }
+  } catch (err) {
+    return { error: err.message };
+  }
+  return { success: false };
+});
+
+ipcMain.handle('rename-chapter', async (_e, { project, oldChapter, newChapter, folderPath }) => {
+  try {
+    const oldDir = path.join(PROJECTS_DIR, project, oldChapter);
+    const newDir = path.join(PROJECTS_DIR, project, newChapter);
+    
+    if (fs.existsSync(oldDir)) {
+      if (!fs.existsSync(newDir)) {
+        fs.mkdirSync(newDir, { recursive: true });
+      }
+      const files = fs.readdirSync(oldDir);
+      for (const file of files) {
+        fs.renameSync(path.join(oldDir, file), path.join(newDir, file));
+      }
+      try {
+        fs.rmdirSync(oldDir);
+      } catch (e) {}
+    }
+    
+    const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
+    if (fs.existsSync(mapFile)) {
+      const data = fs.readFileSync(mapFile, 'utf8');
+      const projectsMap = JSON.parse(data || '{}');
+      delete projectsMap[`${project}/${oldChapter}`];
+      projectsMap[`${project}/${newChapter}`] = folderPath;
+      fs.writeFileSync(mapFile, JSON.stringify(projectsMap, null, 2), 'utf8');
+    }
+    
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});

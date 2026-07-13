@@ -16,5 +16,7 @@ contextBridge.exposeInMainWorld('api', {
   saveCustomPaint: (args) => ipcRenderer.invoke('save-custom-paint', args),
   loadCustomPaint: (args) => ipcRenderer.invoke('load-custom-paint', args),
   clearCustomPaint: (args) => ipcRenderer.invoke('clear-custom-paint', args),
-  listProjects: () => ipcRenderer.invoke('list-projects')
+  listProjects: () => ipcRenderer.invoke('list-projects'),
+  deleteProjectMapping: (args) => ipcRenderer.invoke('delete-project-mapping', args),
+  renameChapter: (args) => ipcRenderer.invoke('rename-chapter', args)
 });

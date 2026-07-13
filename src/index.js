@@ -83,6 +83,62 @@ projectInfoToggle.addEventListener('click', () => {
   }
 });
 
+// Editable chapter input event listeners
+if (projChapterInput) {
+  projChapterInput.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+  
+  projChapterInput.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      projChapterInput.blur();
+    }
+  });
+  
+  projChapterInput.addEventListener('blur', async () => {
+    const newChap = projChapterInput.textContent.trim();
+    if (!newChap || newChap === currentChapter) {
+      projChapterInput.textContent = currentChapter;
+      return;
+    }
+    
+    if (!confirm(`คุณต้องการเปลี่ยนหมายเลขตอนจาก "${currentChapter}" เป็น "${newChap}" หรือไม่?\n(ระบบจะย้ายไฟล์คำแปลทรานสเลตและภาพวาดทั้งหมดของตอนนี้ไปอยู่ในตอนใหม่ให้โดยอัตโนมัติ)`)) {
+      projChapterInput.textContent = currentChapter;
+      return;
+    }
+    
+    const savedList = await window.api.listProjects();
+    let folderPath = '';
+    const proj = savedList.find(p => p.name === currentProject);
+    if (proj) {
+      const chapObj = proj.chapters.find(c => c.chapter === currentChapter);
+      if (chapObj) folderPath = chapObj.folderPath;
+    }
+    
+    const res = await window.api.renameChapter({
+      project: currentProject,
+      oldChapter: currentChapter,
+      newChapter: newChap,
+      folderPath: folderPath
+    });
+    
+    if (res.error) {
+      alert(`เปลี่ยนชื่อตอนล้มเหลว: ${res.error}`);
+      projChapterInput.textContent = currentChapter;
+    } else {
+      currentChapter = newChap;
+      projChapterInput.textContent = newChap;
+      
+      updateSavedProjectsList();
+      if (folderPath) {
+        loadFolder(folderPath);
+      }
+    }
+  });
+}
+
 // Helper to list saved projects and render them
 async function updateSavedProjectsList() {
   const list = await window.api.listProjects();
@@ -113,6 +169,12 @@ async function updateSavedProjectsList() {
     chaptersContainer.style.gap = '4px';
     
     project.chapters.forEach(chap => {
+      const chapRow = document.createElement('div');
+      chapRow.style.display = 'flex';
+      chapRow.style.alignItems = 'center';
+      chapRow.style.justifyContent = 'space-between';
+      chapRow.style.gap = '8px';
+      
       const chapLink = document.createElement('div');
       chapLink.style.cursor = 'pointer';
       chapLink.style.color = '#38bdf8';
@@ -125,7 +187,27 @@ async function updateSavedProjectsList() {
         loadFolder(chap.folderPath);
       });
       
-      chaptersContainer.appendChild(chapLink);
+      const deleteHistoryBtn = document.createElement('button');
+      deleteHistoryBtn.style.background = 'none';
+      deleteHistoryBtn.style.border = 'none';
+      deleteHistoryBtn.style.color = '#ef4444';
+      deleteHistoryBtn.style.fontSize = '10px';
+      deleteHistoryBtn.style.cursor = 'pointer';
+      deleteHistoryBtn.style.padding = '0 2px';
+      deleteHistoryBtn.textContent = '✕';
+      deleteHistoryBtn.title = 'ลบลิงก์โครงการนี้จากประวัติ';
+      
+      deleteHistoryBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm(`ต้องการลบโครงการ "${project.name}" ตอน "${chap.chapter}" ออกจากประวัติการเปิดใช่หรือไม่?`)) return;
+        
+        await window.api.deleteProjectMapping({ project: project.name, chapter: chap.chapter });
+        updateSavedProjectsList();
+      });
+      
+      chapRow.appendChild(chapLink);
+      chapRow.appendChild(deleteHistoryBtn);
+      chaptersContainer.appendChild(chapRow);
     });
     
     projDiv.appendChild(projTitle);
@@ -371,6 +453,11 @@ function renderPageTranslation() {
       const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       g.setAttribute('class', 'bubble-group');
       g.setAttribute('data-id', bubble.bubble_id);
+      if (bubble.rotate) {
+        const cx = xmin + (xmax - xmin) / 2;
+        const cy = (ymin + ymax) / 2;
+        g.setAttribute('transform', `rotate(${bubble.rotate}, ${cx}, ${cy})`);
+      }
       
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       rect.setAttribute('x', xmin);
@@ -453,7 +540,36 @@ function renderPageTranslation() {
       if (isPreviewMode) refreshTypesetView();
     });
     
+    // Delete balloon button
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'delete-bubble-card-btn';
+    deleteBtn.textContent = '🗑️';
+    deleteBtn.title = 'ลบบอลลูนนี้ออกถาวร';
+    deleteBtn.style.background = 'none';
+    deleteBtn.style.border = 'none';
+    deleteBtn.style.cursor = 'pointer';
+    deleteBtn.style.fontSize = '14px';
+    deleteBtn.style.padding = '0';
+    deleteBtn.style.marginLeft = '8px';
+    
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm(`คุณต้องการลบ บอลลูน #${bubble.bubble_id} นี้ถาวรใช่หรือไม่?`)) return;
+      
+      const activePage = images[activeIndex];
+      activePageTranslation = activePageTranslation.filter(b => b.bubble_id !== bubble.bubble_id);
+      
+      if (activePage) {
+        delete cleanedBgCache[activePage.name];
+      }
+      
+      await saveCurrentPageTranslation();
+      renderPageTranslation();
+      if (isPreviewMode) refreshTypesetView();
+    });
+    
     header.appendChild(hideBtn);
+    header.appendChild(deleteBtn);
 
     const origText = document.createElement('div');
     origText.className = 'original-text-block';
@@ -695,11 +811,66 @@ function renderPageTranslation() {
     
     renderRecentSwatches();
 
+    // 3. Rotation Override controls row (Range Slider)
+    const rotateRow = document.createElement('div');
+    rotateRow.className = 'card-controls-row';
+    rotateRow.style.display = 'flex';
+    rotateRow.style.alignItems = 'center';
+    rotateRow.style.gap = '6px';
+    rotateRow.style.marginTop = '6px';
+    
+    const rotateLabel = document.createElement('span');
+    rotateLabel.textContent = 'หมุนเอียง:';
+    rotateLabel.style.fontSize = '12px';
+    rotateLabel.style.color = '#94a3b8';
+    
+    const rotateValLabel = document.createElement('span');
+    rotateValLabel.style.fontSize = '11px';
+    rotateValLabel.style.color = '#38bdf8';
+    rotateValLabel.style.minWidth = '35px';
+    rotateValLabel.textContent = `${bubble.rotate || 0}°`;
+    
+    const rotateSlider = document.createElement('input');
+    rotateSlider.type = 'range';
+    rotateSlider.min = '-90';
+    rotateSlider.max = '90';
+    rotateSlider.value = bubble.rotate || '0';
+    rotateSlider.style.flex = '1';
+    rotateSlider.style.height = '4px';
+    rotateSlider.style.cursor = 'pointer';
+    
+    rotateSlider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      bubble.rotate = val;
+      rotateValLabel.textContent = `${val}°`;
+      
+      // Update SVG bounding box rotation in real-time
+      const group = bubbleOverlay.querySelector(`.bubble-group[data-id="${bubble.bubble_id}"]`);
+      if (group && bubble.box_2d) {
+        const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+        const cx = xmin + (xmax - xmin) / 2;
+        const cy_avg = (ymin + ymax) / 2;
+        if (val !== 0) {
+          group.setAttribute('transform', `rotate(${val}, ${cx}, ${cy_avg})`);
+        } else {
+          group.removeAttribute('transform');
+        }
+      }
+      
+      saveCurrentPageTranslation();
+      if (isPreviewMode) refreshTypesetView();
+    });
+    
+    rotateRow.appendChild(rotateLabel);
+    rotateRow.appendChild(rotateSlider);
+    rotateRow.appendChild(rotateValLabel);
+
     card.appendChild(header);
     card.appendChild(origText);
     card.appendChild(transInput);
     card.appendChild(fontRow);
     card.appendChild(colorRow);
+    card.appendChild(rotateRow);
 
     bubblesList.appendChild(card);
   });
@@ -714,12 +885,23 @@ function updateSVGOverlayOnly() {
       rect.setAttribute('y', ymin);
       rect.setAttribute('width', xmax - xmin);
       rect.setAttribute('height', ymax - ymin);
-    }
-    const handle = bubbleOverlay.querySelector(`.bubble-resize-handle[data-id="${bubble.bubble_id}"]`);
-    if (handle && bubble.box_2d) {
-      const [ymin, xmin, ymax, xmax] = bubble.box_2d;
-      handle.setAttribute('cx', xmax);
-      handle.setAttribute('cy', ymax);
+      
+      const handle = bubbleOverlay.querySelector(`.bubble-resize-handle[data-id="${bubble.bubble_id}"]`);
+      if (handle) {
+        handle.setAttribute('cx', xmax);
+        handle.setAttribute('cy', ymax);
+      }
+      
+      const group = bubbleOverlay.querySelector(`.bubble-group[data-id="${bubble.bubble_id}"]`);
+      if (group) {
+        if (bubble.rotate) {
+          const cx = xmin + (xmax - xmin) / 2;
+          const cy = (ymin + ymax) / 2;
+          group.setAttribute('transform', `rotate(${bubble.rotate}, ${cx}, ${cy})`);
+        } else {
+          group.removeAttribute('transform');
+        }
+      }
     }
   });
 }
@@ -1108,7 +1290,7 @@ function renderTypesetTextLayer() {
     const bgColor = sampleImageBackgroundAt(x1, y1, w, h);
     
     if (bubble.translated_text) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline);
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate);
     }
   });
 }
@@ -1152,7 +1334,7 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false) {
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false, overrideRotate = 0) {
   // Check contrast of background to choose black or white text
   let textColor = overrideTextColor || '#000000';
   if (!overrideTextColor && bgColor.startsWith('#')) {
@@ -1206,9 +1388,21 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
     }
   }
   
+  const cx = x + (w / 2);
+  const cy = y + (h / 2);
+  const hasRotation = !!overrideRotate;
+  
+  if (hasRotation) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate((overrideRotate * Math.PI) / 180);
+  }
+  
+  const relativeStartY = -((lines.length - 1) * lineHeight / 2);
+  
   lines.forEach((line, idx) => {
-    const lineX = x + (w / 2);
-    const lineY = startY + (idx * lineHeight);
+    const lineX = hasRotation ? 0 : cx;
+    const lineY = hasRotation ? (relativeStartY + idx * lineHeight) : (startY + idx * lineHeight);
     
     if (overrideOutline) {
       ctx.strokeStyle = outlineColor;
@@ -1219,6 +1413,10 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
     
     ctx.fillText(line, lineX, lineY);
   });
+  
+  if (hasRotation) {
+    ctx.restore();
+  }
 }
 
 function wrapThaiText(ctx, text, maxWidth) {
@@ -1491,6 +1689,10 @@ let lastPaintX = 0;
 let lastPaintY = 0;
 
 // Grab DOM elements
+const refreshProjectsBtn = document.getElementById('refreshProjectsBtn');
+const addBubbleTextBtn = document.getElementById('addBubbleTextBtn');
+const projChapterInput = document.getElementById('projChapter');
+
 const studioToolbar = document.getElementById('studioToolbar');
 const toolSelectBtn = document.getElementById('toolSelectBtn');
 const toolAddBtn = document.getElementById('toolAddBtn');
@@ -1565,6 +1767,42 @@ toolSelectBtn.addEventListener('click', () => switchTool('select'));
 toolAddBtn.addEventListener('click', () => switchTool('add'));
 toolBrushBtn.addEventListener('click', () => switchTool('brush'));
 toolPaintBtn.addEventListener('click', () => switchTool('paint'));
+
+if (refreshProjectsBtn) {
+  refreshProjectsBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    updateSavedProjectsList();
+  });
+}
+
+if (addBubbleTextBtn) {
+  addBubbleTextBtn.addEventListener('click', async () => {
+    const activePage = images[activeIndex];
+    if (!activePage) return;
+    
+    const newId = activePageTranslation.length > 0
+      ? Math.max(...activePageTranslation.map(b => b.bubble_id)) + 1
+      : 1;
+      
+    activePageTranslation.push({
+      bubble_id: newId,
+      box_2d: [400, 400, 600, 600],
+      original_text: '(เพิ่มข้อความแมนนวล)',
+      translated_text: 'กรอกบทแปลใหม่ที่นี่',
+      font_size: 18,
+      outline: true
+    });
+    
+    delete cleanedBgCache[activePage.name];
+    await saveCurrentPageTranslation();
+    renderPageTranslation();
+    if (isPreviewMode) refreshTypesetView();
+    
+    setTimeout(() => {
+      focusCard(newId);
+    }, 100);
+  });
+}
 
 brushSizeRange.addEventListener('input', (e) => {
   brushSize = parseInt(e.target.value);
