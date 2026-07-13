@@ -42,16 +42,22 @@
         </div>
       </div>
 
-      <!-- Project Info -->
-      <div id="projectInfo" class="project-info" style="display: none;">
-        <div class="info-row">
-          <span class="label">เรื่อง:</span>
-          <span id="projName" class="value">OnePiece</span>
+      <!-- Collapsible Saved Projects List -->
+      <div id="savedProjectsHeader" class="saved-projects-header" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; margin-top: 10px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; color: #f8fafc;">
+        <span style="display: flex; align-items: center; gap: 6px;">📁 โครงการที่บันทึกไว้</span>
+        <span id="savedProjectsToggleIcon" style="font-size: 10px; color: #94a3b8;">▶</span>
+      </div>
+      <div id="savedProjectsList" class="saved-projects-list" style="display: none; padding: 6px 12px; background: #0f172a; border: 1px solid #334155; border-top: none; border-radius: 0 0 6px 6px; max-height: 180px; overflow-y: auto; font-size: 11px; color: #94a3b8; gap: 6px; flex-direction: column;">
+        <!-- Saved projects dynamically loaded here -->
+      </div>
+
+      <!-- Collapsible Active Chapter Pages Header -->
+      <div id="projectInfo" class="project-info" style="display: none; align-items: center; justify-content: space-between; padding: 8px 12px; margin-top: 10px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; color: #f8fafc;">
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <span style="color: #94a3b8; font-size: 10px;">แฟ้มภาพบทแปลปัจจุบัน:</span>
+          <span style="color: #38bdf8; font-weight: 600;"><span id="projName">OnePiece</span> (<span id="projChapter">1123</span>)</span>
         </div>
-        <div class="info-row">
-          <span class="label">ตอนที่:</span>
-          <span id="projChapter" class="value">1123</span>
-        </div>
+        <span id="thumbnailsToggleIcon" style="font-size: 10px; color: #94a3b8;">▼</span>
       </div>
 
       <!-- Thumbnails Grid -->
@@ -99,6 +105,13 @@
           <button id="clearBrushBtn" class="btn" style="font-size: 11px; padding: 2px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">🧹 ล้างแปรง</button>
         </div>
         <div id="paintOptions" class="paint-options" style="display: none; align-items: center; gap: 10px; font-size: 12px; color: #f8fafc;">
+          <label for="paintShapeSelect">รูปทรง:</label>
+          <select id="paintShapeSelect" style="padding: 2px 4px; font-size: 11px; background: #1e293b; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; cursor: pointer;">
+            <option value="brush">🖌️ พู่กัน</option>
+            <option value="rect">⬛ สี่เหลี่ยม</option>
+            <option value="oval">⭕ วงรี</option>
+          </select>
+
           <label for="paintColorInput">สีแปรง:</label>
           <input type="color" id="paintColorInput" value="#ffffff" style="cursor: pointer; width: 30px; height: 22px; padding: 0; border: 1px solid #475569; background: none; border-radius: 4px;" />
           
@@ -120,11 +133,13 @@
         <div id="viewportContainer" class="viewport-container" style="display: none; position: relative;">
           <!-- Custom mask drawing canvas (placed exactly over activeImage) -->
           <canvas id="brushMaskCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.45; display: none; z-index: 5;"></canvas>
-          <!-- Custom colored paint canvas (placed below SVG overlays but above activeImage) -->
-          <canvas id="colorPaintCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 1.0; display: none; z-index: 4;"></canvas>
-          <img id="activeImage" src="" alt="Manga Page" />
-          <!-- Overlay SVG for bubble bounding box highlights -->
-          <svg id="bubbleOverlay" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+          <!-- SVG highlight outline overlay layer -->
+          <svg id="bubbleOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 4;" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+          <!-- Transparent typeset text canvas overlay layer -->
+          <canvas id="typesetTextCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3;"></canvas>
+          <!-- Custom colored paint canvas overlay layer -->
+          <canvas id="colorPaintCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 1.0; display: none; z-index: 2;"></canvas>
+          <img id="activeImage" src="" alt="Manga Page" style="z-index: 1;" />
         </div>
         <div id="placeholderView" class="placeholder-view">
           <span class="placeholder-icon">🖼️</span>

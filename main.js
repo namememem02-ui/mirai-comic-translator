@@ -134,8 +134,18 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
     try {
       const lastProjectFile = path.join(PROJECTS_DIR, 'last_project.json');
       fs.writeFileSync(lastProjectFile, JSON.stringify({ lastFolderPath: folderPath }, null, 2), 'utf8');
+      
+      const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
+      let projectsMap = {};
+      if (fs.existsSync(mapFile)) {
+        try {
+          projectsMap = JSON.parse(fs.readFileSync(mapFile, 'utf8') || '{}');
+        } catch (e) {}
+      }
+      projectsMap[`${project}/${chapter}`] = folderPath;
+      fs.writeFileSync(mapFile, JSON.stringify(projectsMap, null, 2), 'utf8');
     } catch (err) {
-      console.error('Error writing last_project.json:', err);
+      console.error('Error writing last_project.json or projects_map.json:', err);
     }
 
     return {
@@ -406,4 +416,32 @@ ipcMain.handle('clear-custom-paint', (_e, { project, chapter, pageName }) => {
   } catch (err) {
     return { error: err.message };
   }
+});
+
+ipcMain.handle('list-projects', () => {
+  try {
+    const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
+    if (fs.existsSync(mapFile)) {
+      const data = fs.readFileSync(mapFile, 'utf8');
+      const projectsMap = JSON.parse(data || '{}');
+      const list = [];
+      const projects = {};
+      for (const [key, folderPath] of Object.entries(projectsMap)) {
+        const parts = key.split('/');
+        if (parts.length === 2) {
+          const [pName, cName] = parts;
+          if (!projects[pName]) projects[pName] = [];
+          projects[pName].push({ chapter: cName, folderPath });
+        }
+      }
+      
+      for (const [name, chapters] of Object.entries(projects)) {
+        chapters.sort((a, b) => a.chapter.localeCompare(b.chapter, undefined, { numeric: true }));
+        list.push({ name, chapters });
+      }
+      list.sort((a, b) => a.name.localeCompare(b.name));
+      return list;
+    }
+  } catch (err) {}
+  return [];
 });

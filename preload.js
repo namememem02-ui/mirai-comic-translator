@@ -15,5 +15,6 @@ contextBridge.exposeInMainWorld('api', {
   clearCustomMask: (args) => ipcRenderer.invoke('clear-custom-mask', args),
   saveCustomPaint: (args) => ipcRenderer.invoke('save-custom-paint', args),
   loadCustomPaint: (args) => ipcRenderer.invoke('load-custom-paint', args),
-  clearCustomPaint: (args) => ipcRenderer.invoke('clear-custom-paint', args)
+  clearCustomPaint: (args) => ipcRenderer.invoke('clear-custom-paint', args),
+  listProjects: () => ipcRenderer.invoke('list-projects')
 });

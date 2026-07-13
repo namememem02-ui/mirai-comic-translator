@@ -44,10 +44,95 @@ window.api.getConfig().then((cfg) => {
     txt.textContent = 'ยังไม่ได้ตั้งค่า API Key';
   }
 
+  // Load Saved Projects List on startup
+  updateSavedProjectsList();
+
   if (cfg.lastFolderPath) {
     loadFolder(cfg.lastFolderPath, true);
   }
 });
+
+// Collapsible Saved Projects UI Toggles
+const savedProjectsHeader = document.getElementById('savedProjectsHeader');
+const savedProjectsList = document.getElementById('savedProjectsList');
+const savedProjectsToggleIcon = document.getElementById('savedProjectsToggleIcon');
+
+savedProjectsHeader.addEventListener('click', () => {
+  const isHidden = savedProjectsList.style.display === 'none';
+  if (isHidden) {
+    savedProjectsList.style.display = 'flex';
+    savedProjectsToggleIcon.textContent = '▼';
+  } else {
+    savedProjectsList.style.display = 'none';
+    savedProjectsToggleIcon.textContent = '▶';
+  }
+});
+
+// Collapsible Active Chapter Thumbnails UI Toggles
+const projectInfoToggle = document.getElementById('projectInfo');
+const thumbnailsToggleIcon = document.getElementById('thumbnailsToggleIcon');
+
+projectInfoToggle.addEventListener('click', () => {
+  const isHidden = thumbnailsList.style.display === 'none';
+  if (isHidden) {
+    thumbnailsList.style.display = 'block';
+    thumbnailsToggleIcon.textContent = '▼';
+  } else {
+    thumbnailsList.style.display = 'none';
+    thumbnailsToggleIcon.textContent = '▶';
+  }
+});
+
+// Helper to list saved projects and render them
+async function updateSavedProjectsList() {
+  const list = await window.api.listProjects();
+  if (list.length === 0) {
+    savedProjectsList.innerHTML = '<div style="padding: 4px 0; color: #64748b;">ไม่มีประวัติโครงการที่เคยเปิด</div>';
+    return;
+  }
+  
+  savedProjectsList.innerHTML = '';
+  list.forEach(project => {
+    const projDiv = document.createElement('div');
+    projDiv.style.marginBottom = '6px';
+    
+    const projTitle = document.createElement('div');
+    projTitle.style.fontWeight = '600';
+    projTitle.style.color = '#f1f5f9';
+    projTitle.style.cursor = 'default';
+    projTitle.style.display = 'flex';
+    projTitle.style.alignItems = 'center';
+    projTitle.style.gap = '4px';
+    projTitle.textContent = `📁 ${project.name}`;
+    
+    const chaptersContainer = document.createElement('div');
+    chaptersContainer.style.paddingLeft = '14px';
+    chaptersContainer.style.marginTop = '2px';
+    chaptersContainer.style.display = 'flex';
+    chaptersContainer.style.flexDirection = 'column';
+    chaptersContainer.style.gap = '4px';
+    
+    project.chapters.forEach(chap => {
+      const chapLink = document.createElement('div');
+      chapLink.style.cursor = 'pointer';
+      chapLink.style.color = '#38bdf8';
+      chapLink.style.textDecoration = 'underline';
+      chapLink.style.fontSize = '11px';
+      chapLink.textContent = `ตอนที่ ${chap.chapter}`;
+      
+      chapLink.addEventListener('click', (e) => {
+        e.stopPropagation();
+        loadFolder(chap.folderPath);
+      });
+      
+      chaptersContainer.appendChild(chapLink);
+    });
+    
+    projDiv.appendChild(projTitle);
+    projDiv.appendChild(chaptersContainer);
+    savedProjectsList.appendChild(projDiv);
+  });
+}
 
 // 2. Drag & Drop & Select Handlers
 dropZone.addEventListener('click', async () => {
@@ -102,6 +187,9 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   currentProject = res.project;
   currentChapter = res.chapter;
   images = res.images;
+
+  // Refresh saved projects list
+  updateSavedProjectsList();
 
   // Show Project Info
   projName.textContent = currentProject;
@@ -362,7 +450,7 @@ function renderPageTranslation() {
       bubble.hidden = !bubble.hidden;
       saveCurrentPageTranslation();
       renderPageTranslation();
-      if (isPreviewMode) renderTypesetImage();
+      if (isPreviewMode) refreshTypesetView();
     });
     
     header.appendChild(hideBtn);
@@ -380,7 +468,7 @@ function renderPageTranslation() {
       bubble.translated_text = e.target.value;
       saveCurrentPageTranslation();
       if (isPreviewMode) {
-        renderTypesetImage();
+        refreshTypesetView();
       }
     });
 
@@ -453,7 +541,7 @@ function renderPageTranslation() {
         sizeValLabel.textContent = '18px';
       }
       saveCurrentPageTranslation();
-      if (isPreviewMode) renderTypesetImage();
+      if (isPreviewMode) refreshTypesetView();
     });
     
     sizeSlider.addEventListener('input', (e) => {
@@ -535,7 +623,7 @@ function renderPageTranslation() {
           colorInput.style.opacity = '1.0';
           colorInput.value = color;
           saveCurrentPageTranslation();
-          if (isPreviewMode) renderTypesetImage();
+          if (isPreviewMode) refreshTypesetView();
           renderRecentSwatches();
         });
         recentColorsContainer.appendChild(swatch);
@@ -551,7 +639,7 @@ function renderPageTranslation() {
         colorInput.style.opacity = '1.0';
       }
       saveCurrentPageTranslation();
-      if (isPreviewMode) renderTypesetImage();
+      if (isPreviewMode) refreshTypesetView();
     });
     
     colorInput.addEventListener('input', (e) => {
@@ -568,10 +656,34 @@ function renderPageTranslation() {
       }
       
       saveCurrentPageTranslation();
-      if (isPreviewMode) renderTypesetImage();
+      if (isPreviewMode) refreshTypesetView();
       renderRecentSwatches();
     });
     
+    // Text outline toggle checkbox
+    const outlineLabel = document.createElement('label');
+    outlineLabel.style.display = 'flex';
+    outlineLabel.style.alignItems = 'center';
+    outlineLabel.style.gap = '3px';
+    outlineLabel.style.fontSize = '11px';
+    outlineLabel.style.color = '#94a3b8';
+    outlineLabel.style.cursor = 'pointer';
+    outlineLabel.style.marginLeft = '12px';
+    
+    const outlineCheck = document.createElement('input');
+    outlineCheck.type = 'checkbox';
+    outlineCheck.checked = !!bubble.outline;
+    outlineCheck.style.cursor = 'pointer';
+    
+    outlineCheck.addEventListener('change', (e) => {
+      bubble.outline = e.target.checked;
+      saveCurrentPageTranslation();
+      if (isPreviewMode) refreshTypesetView();
+    });
+    
+    outlineLabel.appendChild(outlineCheck);
+    outlineLabel.appendChild(document.createTextNode('ขอบอักษร'));
+
     autoColorLabel.appendChild(autoColorCheck);
     autoColorLabel.appendChild(document.createTextNode('ออโต้'));
     
@@ -579,6 +691,7 @@ function renderPageTranslation() {
     colorRow.appendChild(colorInput);
     colorRow.appendChild(autoColorLabel);
     colorRow.appendChild(recentColorsContainer);
+    colorRow.appendChild(outlineLabel);
     
     renderRecentSwatches();
 
@@ -852,6 +965,8 @@ previewToggleBtn.addEventListener('click', () => {
 
 activeImage.addEventListener('load', () => {
   if (activeImage.src.startsWith('data:')) {
+    initBgSampler();
+    renderTypesetTextLayer();
     return;
   }
   if (isPreviewMode && activePageTranslation.length > 0) {
@@ -859,13 +974,28 @@ activeImage.addEventListener('load', () => {
   }
 });
 
+let bgSamplerCanvas = null;
+
+function initBgSampler() {
+  bgSamplerCanvas = document.createElement('canvas');
+  bgSamplerCanvas.width = activeImage.naturalWidth || 800;
+  bgSamplerCanvas.height = activeImage.naturalHeight || 1200;
+  const ctx = bgSamplerCanvas.getContext('2d');
+  ctx.drawImage(activeImage, 0, 0);
+}
+
+function sampleImageBackgroundAt(x, y, w, h) {
+  if (!bgSamplerCanvas) return '#ffffff';
+  const ctx = bgSamplerCanvas.getContext('2d');
+  return sampleBubbleBackground(ctx, x, y, w, h);
+}
+
 async function renderTypesetImage() {
   canvasLoader.style.display = 'flex';
   const originalSrc = activeImage.src;
   const canvas = document.createElement('canvas');
   canvas.width = activeImage.naturalWidth;
   canvas.height = activeImage.naturalHeight;
-  const ctx = canvas.getContext('2d');
   
   let cleanedImgElement = activeImage;
   let objectUrlToCleanup = null;
@@ -909,17 +1039,54 @@ async function renderTypesetImage() {
     }
   }
   
-  ctx.drawImage(cleanedImgElement, 0, 0);
-  
-  // Overlay custom paint layer behind text
-  ctx.drawImage(colorPaintCanvas, 0, 0);
-  
   if (objectUrlToCleanup) {
     URL.revokeObjectURL(objectUrlToCleanup);
   }
   
+  // Handle smooth flat color erase fallback if clean background load failed
+  if (cleanedImgElement === activeImage) {
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tctx = tempCanvas.getContext('2d');
+    tctx.drawImage(activeImage, 0, 0);
+    
+    activePageTranslation.forEach((bubble) => {
+      if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
+      const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+      const x1 = (xmin / 1000) * canvas.width;
+      const y1 = (ymin / 1000) * canvas.height;
+      const x2 = (xmax / 1000) * canvas.width;
+      const y2 = (ymax / 1000) * canvas.height;
+      const w = x2 - x1;
+      const h = y2 - y1;
+      
+      const bgColor = sampleBubbleBackground(tctx, x1, y1, w, h);
+      drawSmoothErase(tctx, x1, y1, w, h, bgColor);
+    });
+    activeImage.src = tempCanvas.toDataURL('image/jpeg', 0.95);
+  } else {
+    activeImage.src = cleanedImgElement.src;
+  }
+  
+  canvasLoader.style.display = 'none';
+}
+
+function renderTypesetTextLayer() {
+  const canvas = document.getElementById('typesetTextCanvas');
+  if (!canvas) return;
+  canvas.width = activeImage.naturalWidth || 800;
+  canvas.height = activeImage.naturalHeight || 1200;
+  
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  if (activePageTranslation.length === 0) return;
+  
   activePageTranslation.forEach((bubble) => {
+    if (bubble.hidden) return;
     if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
+    
     const [ymin, xmin, ymax, xmax] = bubble.box_2d;
     const x1 = (xmin / 1000) * canvas.width;
     const y1 = (ymin / 1000) * canvas.height;
@@ -928,22 +1095,20 @@ async function renderTypesetImage() {
     const w = x2 - x1;
     const h = y2 - y1;
     
-    if (cleanedImgElement === activeImage) {
-      const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
-      drawSmoothErase(ctx, x1, y1, w, h, bgColor);
-    }
+    const bgColor = sampleImageBackgroundAt(x1, y1, w, h);
     
-    const bgColorForContrast = (cleanedImgElement === activeImage)
-      ? sampleBubbleBackground(ctx, x1, y1, w, h)
-      : '#ffffff';
-      
-    if (bubble.translated_text && !bubble.hidden) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color);
+    if (bubble.translated_text) {
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline);
     }
   });
-  
-  activeImage.src = canvas.toDataURL('image/jpeg', 0.95);
-  canvasLoader.style.display = 'none';
+}
+
+function refreshTypesetView() {
+  if (activeImage.src.startsWith('data:')) {
+    renderTypesetTextLayer();
+  } else {
+    renderTypesetImage();
+  }
 }
 
 function sampleBubbleBackground(ctx, x, y, w, h) {
@@ -977,7 +1142,7 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null) {
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false) {
   // Check contrast of background to choose black or white text
   let textColor = overrideTextColor || '#000000';
   if (!overrideTextColor && bgColor.startsWith('#')) {
@@ -1017,8 +1182,32 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
   const lineHeight = fontSize * 1.25;
   const startY = y + (h / 2) - ((lines.length - 1) * lineHeight / 2);
   
+  // Calculate high-contrast outline color if outline is checked
+  let outlineColor = '#ffffff';
+  if (overrideOutline) {
+    if (textColor.startsWith('#')) {
+      const r = parseInt(textColor.slice(1, 3), 16) || 0;
+      const g = parseInt(textColor.slice(3, 5), 16) || 0;
+      const b = parseInt(textColor.slice(5, 7), 16) || 0;
+      const luminance = r * 0.299 + g * 0.587 + b * 0.114;
+      if (luminance > 150) outlineColor = '#000000';
+    } else {
+      if (textColor === 'white' || textColor === '#ffffff') outlineColor = '#000000';
+    }
+  }
+  
   lines.forEach((line, idx) => {
-    ctx.fillText(line, x + (w / 2), startY + (idx * lineHeight));
+    const lineX = x + (w / 2);
+    const lineY = startY + (idx * lineHeight);
+    
+    if (overrideOutline) {
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = Math.max(3, Math.round(fontSize * 0.2));
+      ctx.lineJoin = 'round';
+      ctx.strokeText(line, lineX, lineY);
+    }
+    
+    ctx.fillText(line, lineX, lineY);
   });
 }
 
@@ -1235,7 +1424,7 @@ exportChapterBtn.addEventListener('click', async () => {
             : '#ffffff';
             
           if (bubble.translated_text && !bubble.hidden) {
-            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color);
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color, bubble.outline);
           }
         });
       }
@@ -1384,6 +1573,14 @@ paintOpacityRange.addEventListener('input', (e) => {
 
 paintColorInput.addEventListener('input', (e) => {
   paintColor = e.target.value;
+});
+
+const paintShapeSelect = document.getElementById('paintShapeSelect');
+let paintShape = 'brush';
+let paintSnapshot = null;
+
+paintShapeSelect.addEventListener('change', (e) => {
+  paintShape = e.target.value;
 });
 
 // Clear custom mask
@@ -1537,7 +1734,7 @@ window.addEventListener('mousemove', (e) => {
     ];
     
     updateSVGOverlayOnly();
-    if (isPreviewMode) renderTypesetImage();
+    if (isPreviewMode) refreshTypesetView();
   } else if (isResizing) {
     const [ymin, xmin, ymax, xmax] = initialBox;
     const newXmax = Math.max(xmin + 20, Math.min(1000, xmax + dx));
@@ -1547,7 +1744,7 @@ window.addEventListener('mousemove', (e) => {
     bubble.box_2d[3] = Math.round(newXmax);
     
     updateSVGOverlayOnly();
-    if (isPreviewMode) renderTypesetImage();
+    if (isPreviewMode) refreshTypesetView();
   }
 });
 
@@ -1587,7 +1784,7 @@ window.addEventListener('mouseup', async () => {
         delete cleanedBgCache[activePage.name];
         await saveCurrentPageTranslation();
         renderPageTranslation();
-        if (isPreviewMode) renderTypesetImage();
+        if (isPreviewMode) refreshTypesetView();
         
         setTimeout(() => {
           focusCard(newId);
@@ -1605,7 +1802,7 @@ window.addEventListener('mouseup', async () => {
   delete cleanedBgCache[activePage.name];
   await saveCurrentPageTranslation();
   renderPageTranslation();
-  if (isPreviewMode) renderTypesetImage();
+  if (isPreviewMode) refreshTypesetView();
 });
 
 // 4. Brush drawing event listeners on brushMaskCanvas
@@ -1693,18 +1890,30 @@ colorPaintCanvas.addEventListener('mousedown', (e) => {
   lastPaintX = coords.x;
   lastPaintY = coords.y;
   
-  drawColorPaintStroke(coords.x, coords.y);
+  const ctx = colorPaintCanvas.getContext('2d');
+  // Capture canvas snapshot for non-trail preview drawing
+  paintSnapshot = ctx.getImageData(0, 0, colorPaintCanvas.width, colorPaintCanvas.height);
+  
+  if (paintShape === 'brush') {
+    drawColorPaintStroke(coords.x, coords.y);
+  }
 });
 
 colorPaintCanvas.addEventListener('mousemove', (e) => {
   if (currentTool !== 'paint' || !isColorPainting) return;
   const coords = getColorCanvasCoords(e);
-  drawColorPaintStroke(coords.x, coords.y, true);
+  
+  if (paintShape === 'brush') {
+    drawColorPaintStroke(coords.x, coords.y, true);
+  } else {
+    drawColorShapePreview(coords.x, coords.y);
+  }
 });
 
 window.addEventListener('mouseup', async () => {
   if (isColorPainting) {
     isColorPainting = false;
+    paintSnapshot = null;
     
     const activePage = images[activeIndex];
     if (activePage) {
@@ -1721,10 +1930,43 @@ window.addEventListener('mouseup', async () => {
       }
       
       delete cleanedBgCache[activePage.name];
-      if (isPreviewMode) renderTypesetImage();
+      if (isPreviewMode) refreshTypesetView();
     }
   }
 });
+
+function drawColorShapePreview(x, y) {
+  const ctx = colorPaintCanvas.getContext('2d');
+  if (paintSnapshot) {
+    ctx.putImageData(paintSnapshot, 0, 0);
+  }
+  
+  ctx.fillStyle = paintColor;
+  ctx.strokeStyle = paintColor;
+  ctx.lineWidth = paintSize;
+  ctx.globalAlpha = paintOpacity;
+  
+  const startX = lastPaintX;
+  const startY = lastPaintY;
+  
+  const x1 = Math.min(startX, x);
+  const y1 = Math.min(startY, y);
+  const w = Math.abs(x - startX);
+  const h = Math.abs(y - startY);
+  
+  ctx.beginPath();
+  if (paintShape === 'rect') {
+    ctx.fillRect(x1, y1, w, h);
+  } else if (paintShape === 'oval') {
+    const cx = startX + (x - startX) / 2;
+    const cy = startY + (y - startY) / 2;
+    const rx = Math.abs(x - startX) / 2;
+    const ry = Math.abs(y - startY) / 2;
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1.0;
+}
 
 function drawColorPaintStroke(x, y, isMove = false) {
   const ctx = colorPaintCanvas.getContext('2d');
