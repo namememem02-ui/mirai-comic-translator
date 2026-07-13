@@ -11,12 +11,14 @@ if sys.platform.startswith('win'):
 
 import torch
 
-# MONKEY-PATCH: Force PyTorch JIT load to always map to CPU.
-# This prevents NotImplementedError (CUDA backend fallback issues) on CPU-only machines.
+# Dynamically detect if a compatible NVIDIA GPU (CUDA) is available, otherwise fallback to CPU
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+# MONKEY-PATCH: Force PyTorch JIT load to map to the detected device
 original_jit_load = torch.jit.load
 def patched_jit_load(f, map_location=None, *args, **kwargs):
     if map_location is None:
-        map_location = 'cpu'
+        map_location = device
     return original_jit_load(f, map_location=map_location, *args, **kwargs)
 torch.jit.load = patched_jit_load
 
