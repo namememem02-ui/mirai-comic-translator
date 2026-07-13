@@ -374,6 +374,55 @@ function renderPageTranslation() {
     controlsRow.appendChild(fontLabel);
     controlsRow.appendChild(sizeInput);
 
+    // Text color override dropdown
+    const colorLabel = document.createElement('span');
+    colorLabel.textContent = 'สีอักษร:';
+    colorLabel.style.fontSize = '12px';
+    colorLabel.style.color = '#94a3b8';
+    colorLabel.style.marginLeft = '12px';
+    
+    const colorSelect = document.createElement('select');
+    colorSelect.style.padding = '3px 6px';
+    colorSelect.style.fontSize = '12px';
+    colorSelect.style.background = '#1e293b';
+    colorSelect.style.border = '1px solid #475569';
+    colorSelect.style.color = '#f8fafc';
+    colorSelect.style.borderRadius = '4px';
+    colorSelect.style.cursor = 'pointer';
+    
+    const colorOptions = [
+      { value: '', label: 'ออโต้' },
+      { value: '#000000', label: '⚫ ดำ' },
+      { value: '#ffffff', label: '⚪ ขาว' },
+      { value: '#ef4444', label: '🔴 แดง' },
+      { value: '#f59e0b', label: '🟡 เหลือง' },
+      { value: '#3b82f6', label: '🔵 น้ำเงิน' }
+    ];
+    
+    colorOptions.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      if (bubble.text_color === opt.value) {
+        o.selected = true;
+      }
+      colorSelect.appendChild(o);
+    });
+    
+    colorSelect.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val) {
+        bubble.text_color = val;
+      } else {
+        delete bubble.text_color;
+      }
+      saveCurrentPageTranslation();
+      if (isPreviewMode) renderTypesetImage();
+    });
+    
+    controlsRow.appendChild(colorLabel);
+    controlsRow.appendChild(colorSelect);
+
     // Box position & size adjustment controls row
     const adjustRow = document.createElement('div');
     adjustRow.className = 'card-adjust-row';
@@ -822,7 +871,7 @@ async function renderTypesetImage() {
       : '#ffffff';
       
     if (bubble.translated_text) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size);
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color);
     }
   });
   
@@ -861,10 +910,10 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null) {
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null) {
   // Check contrast of background to choose black or white text
-  let textColor = '#000000';
-  if (bgColor.startsWith('#')) {
+  let textColor = overrideTextColor || '#000000';
+  if (!overrideTextColor && bgColor.startsWith('#')) {
     const r = parseInt(bgColor.slice(1, 3), 16) || 0;
     const g = parseInt(bgColor.slice(3, 5), 16) || 0;
     const b = parseInt(bgColor.slice(5, 7), 16) || 0;
@@ -1097,7 +1146,7 @@ exportChapterBtn.addEventListener('click', async () => {
             : '#ffffff';
             
           if (bubble.translated_text) {
-            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size);
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color);
           }
         });
       }
