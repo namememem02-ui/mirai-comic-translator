@@ -259,10 +259,13 @@ function renderPageTranslation() {
     transInput.className = 'translation-textarea';
     transInput.value = bubble.translated_text || '';
     
-    // Auto-save on edit
+    // Auto-save on edit and update canvas preview in real-time
     transInput.addEventListener('input', (e) => {
       bubble.translated_text = e.target.value;
       saveCurrentPageTranslation();
+      if (isPreviewMode) {
+        renderTypesetImage();
+      }
     });
 
     transInput.addEventListener('focus', () => {
@@ -275,9 +278,49 @@ function renderPageTranslation() {
       card.classList.remove('active');
     });
 
+    // Font size override controls row
+    const controlsRow = document.createElement('div');
+    controlsRow.className = 'card-controls-row';
+    controlsRow.style.display = 'flex';
+    controlsRow.style.alignItems = 'center';
+    controlsRow.style.gap = '8px';
+    controlsRow.style.marginTop = '6px';
+    
+    const fontLabel = document.createElement('span');
+    fontLabel.textContent = 'ขนาดตัวอักษร:';
+    fontLabel.style.fontSize = '12px';
+    fontLabel.style.color = '#94a3b8';
+    
+    const sizeInput = document.createElement('input');
+    sizeInput.type = 'number';
+    sizeInput.value = bubble.font_size || '';
+    sizeInput.placeholder = 'ออโต้';
+    sizeInput.style.width = '65px';
+    sizeInput.style.padding = '3px 6px';
+    sizeInput.style.fontSize = '12px';
+    sizeInput.style.background = '#1e293b';
+    sizeInput.style.border = '1px solid #475569';
+    sizeInput.style.color = '#f8fafc';
+    sizeInput.style.borderRadius = '4px';
+    
+    sizeInput.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      if (isNaN(val) || val <= 0) {
+        delete bubble.font_size;
+      } else {
+        bubble.font_size = val;
+      }
+      saveCurrentPageTranslation();
+      if (isPreviewMode) renderTypesetImage();
+    });
+    
+    controlsRow.appendChild(fontLabel);
+    controlsRow.appendChild(sizeInput);
+
     card.appendChild(header);
     card.appendChild(origText);
     card.appendChild(transInput);
+    card.appendChild(controlsRow);
 
     bubblesList.appendChild(card);
   });
@@ -607,7 +650,7 @@ async function renderTypesetImage() {
       : '#ffffff';
       
     if (bubble.translated_text) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast);
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size);
     }
   });
   
@@ -646,7 +689,7 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff') {
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null) {
   // Check contrast of background to choose black or white text
   let textColor = '#000000';
   if (bgColor.startsWith('#')) {
@@ -661,19 +704,26 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff') {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   
-  let fontSize = Math.max(14, Math.round(h * 0.18));
-  if (fontSize > 40) fontSize = 40;
-  
+  let fontSize;
   let lines = [];
   
-  while (fontSize >= 6) {
+  if (overrideFontSize) {
+    fontSize = overrideFontSize;
     ctx.font = `bold ${fontSize}px 'Sarabun', 'Segoe UI', sans-serif`;
     lines = wrapThaiText(ctx, text, w * 0.85);
-    const totalHeight = lines.length * (fontSize * 1.25);
-    if (totalHeight <= h * 0.85) {
-      break;
+  } else {
+    fontSize = Math.max(14, Math.round(h * 0.18));
+    if (fontSize > 40) fontSize = 40;
+    
+    while (fontSize >= 6) {
+      ctx.font = `bold ${fontSize}px 'Sarabun', 'Segoe UI', sans-serif`;
+      lines = wrapThaiText(ctx, text, w * 0.85);
+      const totalHeight = lines.length * (fontSize * 1.25);
+      if (totalHeight <= h * 0.85) {
+        break;
+      }
+      fontSize -= 1;
     }
-    fontSize -= 1;
   }
   
   const lineHeight = fontSize * 1.25;
@@ -685,18 +735,37 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff') {
 }
 
 function wrapThaiText(ctx, text, maxWidth) {
-  const chars = Array.from(text);
+  // Use built-in Intl.Segmenter for grammatically correct Thai word breaking
+  const segmenter = new Intl.Segmenter('th', { granularity: 'word' });
+  const segments = Array.from(segmenter.segment(text)).map(s => s.segment);
+  
   let lines = [];
   let currentLine = '';
   
-  for (let i = 0; i < chars.length; i++) {
-    const char = chars[i];
-    const testLine = currentLine + char;
+  for (let i = 0; i < segments.length; i++) {
+    const segment = segments[i];
+    const testLine = currentLine + segment;
     const metrics = ctx.measureText(testLine);
     
-    if (metrics.width > maxWidth && currentLine.length > 0) {
-      lines.push(currentLine);
-      currentLine = char;
+    if (metrics.width > maxWidth && i > 0) {
+      if (currentLine) {
+        lines.push(currentLine);
+        currentLine = segment;
+      } else {
+        // If a single word segment exceeds maxWidth, split by grapheme clusters (never break combining characters)
+        const graphemeSegmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
+        const graphemes = Array.from(graphemeSegmenter.segment(segment)).map(g => g.segment);
+        
+        for (const grapheme of graphemes) {
+          const testGraphemeLine = currentLine + grapheme;
+          if (ctx.measureText(testGraphemeLine).width > maxWidth && currentLine) {
+            lines.push(currentLine);
+            currentLine = grapheme;
+          } else {
+            currentLine = testGraphemeLine;
+          }
+        }
+      }
     } else {
       currentLine = testLine;
     }
@@ -843,7 +912,7 @@ exportChapterBtn.addEventListener('click', async () => {
             : '#ffffff';
             
           if (bubble.translated_text) {
-            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast);
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size);
           }
         });
       }
