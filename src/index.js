@@ -28,6 +28,7 @@ let activeIndex = -1;
 let activePageTranslation = [];
 let projectGlossary = {}; // { eng: thai }
 const cleanedBgCache = {}; // { pageName: dataUrl }
+const recentColors = ['#000000', '#ffffff', '#ef4444', '#f59e0b', '#3b82f6'];
 
 // 1. Initialize API Config
 window.api.getConfig().then((cfg) => {
@@ -204,15 +205,20 @@ async function selectPage(idx) {
   studioToolbar.style.display = 'flex';
   if (typeof switchTool === 'function') switchTool('select');
 
-  // Load custom mask when raw image is loaded
+  // Load custom mask and paint layers when raw image is loaded
   activeImage.onload = async () => {
     if (activeImage.src.startsWith('data:')) return;
     
     brushMaskCanvas.width = activeImage.naturalWidth || 800;
     brushMaskCanvas.height = activeImage.naturalHeight || 1200;
+    colorPaintCanvas.width = activeImage.naturalWidth || 800;
+    colorPaintCanvas.height = activeImage.naturalHeight || 1200;
     
     const ctx = brushMaskCanvas.getContext('2d');
     ctx.clearRect(0, 0, brushMaskCanvas.width, brushMaskCanvas.height);
+    
+    const pctx = colorPaintCanvas.getContext('2d');
+    pctx.clearRect(0, 0, colorPaintCanvas.width, colorPaintCanvas.height);
     
     try {
       const maskRes = await window.api.loadCustomMask({
@@ -230,6 +236,24 @@ async function selectPage(idx) {
       }
     } catch (err) {
       console.warn('[⚠️] Failed to load custom mask:', err);
+    }
+    
+    try {
+      const paintRes = await window.api.loadCustomPaint({
+        project: currentProject,
+        chapter: currentChapter,
+        pageName: activePage.name
+      });
+      if (paintRes && paintRes.exists) {
+        const paintImg = new Image();
+        const formattedPath = paintRes.absolutePath.replace(/\\/g, '/');
+        paintImg.src = `file:///${formattedPath}`;
+        paintImg.onload = () => {
+          pctx.drawImage(paintImg, 0, 0);
+        };
+      }
+    } catch (err) {
+      console.warn('[⚠️] Failed to load custom paint layer:', err);
     }
   };
 
@@ -267,8 +291,14 @@ function renderPageTranslation() {
       rect.setAttribute('height', ymax - ymin);
       rect.setAttribute('class', 'bubble-rect');
       rect.setAttribute('data-id', bubble.bubble_id);
-      rect.style.fill = 'rgba(168, 85, 247, 0.15)';
-      rect.style.stroke = '#a855f7';
+      if (bubble.hidden) {
+        rect.style.fill = 'rgba(239, 68, 68, 0.05)';
+        rect.style.stroke = '#ef4444';
+        rect.style.strokeDasharray = '4,4';
+      } else {
+        rect.style.fill = 'rgba(168, 85, 247, 0.15)';
+        rect.style.stroke = '#a855f7';
+      }
       rect.style.strokeWidth = '2px';
       rect.style.cursor = 'move';
       
@@ -285,7 +315,12 @@ function renderPageTranslation() {
       handle.setAttribute('r', 8);
       handle.setAttribute('class', 'bubble-resize-handle');
       handle.setAttribute('data-id', bubble.bubble_id);
-      handle.style.fill = '#a855f7';
+      
+      if (bubble.hidden) {
+        handle.style.fill = '#ef4444';
+      } else {
+        handle.style.fill = '#a855f7';
+      }
       handle.style.stroke = '#ffffff';
       handle.style.strokeWidth = '2px';
       handle.style.cursor = 'se-resize';
@@ -301,12 +336,36 @@ function renderPageTranslation() {
 
     const header = document.createElement('div');
     header.className = 'card-header';
+    header.style.display = 'flex';
+    header.style.alignItems = 'center';
     
     const idLabel = document.createElement('span');
     idLabel.className = 'bubble-id-label';
     idLabel.textContent = `บอลลูน #${bubble.bubble_id}`;
-
     header.appendChild(idLabel);
+    
+    // Show/Hide toggle button
+    const hideBtn = document.createElement('button');
+    hideBtn.className = 'hide-bubble-btn';
+    hideBtn.textContent = bubble.hidden ? '🙈' : '👁️';
+    hideBtn.title = bubble.hidden ? 'แสดงข้อความ' : 'ซ่อนข้อความ';
+    hideBtn.style.background = 'none';
+    hideBtn.style.border = 'none';
+    hideBtn.style.color = bubble.hidden ? '#ef4444' : '#10b981';
+    hideBtn.style.cursor = 'pointer';
+    hideBtn.style.fontSize = '14px';
+    hideBtn.style.padding = '0';
+    hideBtn.style.marginLeft = 'auto';
+    
+    hideBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      bubble.hidden = !bubble.hidden;
+      saveCurrentPageTranslation();
+      renderPageTranslation();
+      if (isPreviewMode) renderTypesetImage();
+    });
+    
+    header.appendChild(hideBtn);
 
     const origText = document.createElement('div');
     origText.className = 'original-text-block';
@@ -335,200 +394,199 @@ function renderPageTranslation() {
       card.classList.remove('active');
     });
 
-    // Font size override controls row
-    const controlsRow = document.createElement('div');
-    controlsRow.className = 'card-controls-row';
-    controlsRow.style.display = 'flex';
-    controlsRow.style.alignItems = 'center';
-    controlsRow.style.gap = '8px';
-    controlsRow.style.marginTop = '6px';
+    // 1. Font Size Override controls row (Range Slider)
+    const fontRow = document.createElement('div');
+    fontRow.className = 'card-controls-row';
+    fontRow.style.display = 'flex';
+    fontRow.style.alignItems = 'center';
+    fontRow.style.gap = '6px';
+    fontRow.style.marginTop = '6px';
     
     const fontLabel = document.createElement('span');
-    fontLabel.textContent = 'ขนาดตัวอักษร:';
+    fontLabel.textContent = 'ขนาด:';
     fontLabel.style.fontSize = '12px';
     fontLabel.style.color = '#94a3b8';
     
-    const sizeInput = document.createElement('input');
-    sizeInput.type = 'number';
-    sizeInput.value = bubble.font_size || '';
-    sizeInput.placeholder = 'ออโต้';
-    sizeInput.style.width = '65px';
-    sizeInput.style.padding = '3px 6px';
-    sizeInput.style.fontSize = '12px';
-    sizeInput.style.background = '#1e293b';
-    sizeInput.style.border = '1px solid #475569';
-    sizeInput.style.color = '#f8fafc';
-    sizeInput.style.borderRadius = '4px';
+    const sizeValLabel = document.createElement('span');
+    sizeValLabel.style.fontSize = '11px';
+    sizeValLabel.style.color = '#38bdf8';
+    sizeValLabel.style.minWidth = '35px';
+    sizeValLabel.textContent = bubble.font_size ? `${bubble.font_size}px` : 'ออโต้';
     
-    sizeInput.addEventListener('input', (e) => {
-      const val = parseInt(e.target.value);
-      if (isNaN(val) || val <= 0) {
+    const sizeSlider = document.createElement('input');
+    sizeSlider.type = 'range';
+    sizeSlider.min = '8';
+    sizeSlider.max = '72';
+    sizeSlider.value = bubble.font_size || '18';
+    sizeSlider.style.flex = '1';
+    sizeSlider.style.height = '4px';
+    sizeSlider.style.cursor = 'pointer';
+    if (!bubble.font_size) {
+      sizeSlider.disabled = true;
+      sizeSlider.style.opacity = '0.4';
+    }
+    
+    const autoSizeLabel = document.createElement('label');
+    autoSizeLabel.style.display = 'flex';
+    autoSizeLabel.style.alignItems = 'center';
+    autoSizeLabel.style.gap = '3px';
+    autoSizeLabel.style.fontSize = '11px';
+    autoSizeLabel.style.color = '#94a3b8';
+    autoSizeLabel.style.cursor = 'pointer';
+    
+    const autoSizeCheck = document.createElement('input');
+    autoSizeCheck.type = 'checkbox';
+    autoSizeCheck.checked = !bubble.font_size;
+    autoSizeCheck.style.cursor = 'pointer';
+    
+    autoSizeCheck.addEventListener('change', (e) => {
+      if (e.target.checked) {
         delete bubble.font_size;
+        sizeSlider.disabled = true;
+        sizeSlider.style.opacity = '0.4';
+        sizeValLabel.textContent = 'ออโต้';
       } else {
-        bubble.font_size = val;
+        bubble.font_size = 18;
+        sizeSlider.disabled = false;
+        sizeSlider.style.opacity = '1.0';
+        sizeSlider.value = '18';
+        sizeValLabel.textContent = '18px';
       }
       saveCurrentPageTranslation();
       if (isPreviewMode) renderTypesetImage();
     });
     
-    controlsRow.appendChild(fontLabel);
-    controlsRow.appendChild(sizeInput);
+    sizeSlider.addEventListener('input', (e) => {
+      const val = parseInt(e.target.value);
+      bubble.font_size = val;
+      sizeValLabel.textContent = `${val}px`;
+      saveCurrentPageTranslation();
+      if (isPreviewMode) renderTypesetImage();
+    });
+    
+    autoSizeLabel.appendChild(autoSizeCheck);
+    autoSizeLabel.appendChild(document.createTextNode('ออโต้'));
+    
+    fontRow.appendChild(fontLabel);
+    fontRow.appendChild(sizeSlider);
+    fontRow.appendChild(sizeValLabel);
+    fontRow.appendChild(autoSizeLabel);
 
-    // Text color override dropdown
+    // 2. Text Color Swatches & Recent Colors row
+    const colorRow = document.createElement('div');
+    colorRow.className = 'card-controls-row';
+    colorRow.style.display = 'flex';
+    colorRow.style.alignItems = 'center';
+    colorRow.style.gap = '6px';
+    colorRow.style.marginTop = '6px';
+    
     const colorLabel = document.createElement('span');
     colorLabel.textContent = 'สีอักษร:';
     colorLabel.style.fontSize = '12px';
     colorLabel.style.color = '#94a3b8';
-    colorLabel.style.marginLeft = '12px';
     
-    const colorSelect = document.createElement('select');
-    colorSelect.style.padding = '3px 6px';
-    colorSelect.style.fontSize = '12px';
-    colorSelect.style.background = '#1e293b';
-    colorSelect.style.border = '1px solid #475569';
-    colorSelect.style.color = '#f8fafc';
-    colorSelect.style.borderRadius = '4px';
-    colorSelect.style.cursor = 'pointer';
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = bubble.text_color || '#000000';
+    colorInput.style.width = '24px';
+    colorInput.style.height = '20px';
+    colorInput.style.padding = '0';
+    colorInput.style.border = '1px solid #475569';
+    colorInput.style.background = 'none';
+    colorInput.style.borderRadius = '3px';
+    colorInput.style.cursor = 'pointer';
+    if (!bubble.text_color) {
+      colorInput.style.opacity = '0.3';
+    }
     
-    const colorOptions = [
-      { value: '', label: 'ออโต้' },
-      { value: '#000000', label: '⚫ ดำ' },
-      { value: '#ffffff', label: '⚪ ขาว' },
-      { value: '#ef4444', label: '🔴 แดง' },
-      { value: '#f59e0b', label: '🟡 เหลือง' },
-      { value: '#3b82f6', label: '🔵 น้ำเงิน' }
-    ];
+    const autoColorLabel = document.createElement('label');
+    autoColorLabel.style.display = 'flex';
+    autoColorLabel.style.alignItems = 'center';
+    autoColorLabel.style.gap = '3px';
+    autoColorLabel.style.fontSize = '11px';
+    autoColorLabel.style.color = '#94a3b8';
+    autoColorLabel.style.cursor = 'pointer';
     
-    colorOptions.forEach(opt => {
-      const o = document.createElement('option');
-      o.value = opt.value;
-      o.textContent = opt.label;
-      if (bubble.text_color === opt.value) {
-        o.selected = true;
-      }
-      colorSelect.appendChild(o);
-    });
+    const autoColorCheck = document.createElement('input');
+    autoColorCheck.type = 'checkbox';
+    autoColorCheck.checked = !bubble.text_color;
+    autoColorCheck.style.cursor = 'pointer';
     
-    colorSelect.addEventListener('change', (e) => {
-      const val = e.target.value;
-      if (val) {
-        bubble.text_color = val;
-      } else {
+    const recentColorsContainer = document.createElement('div');
+    recentColorsContainer.style.display = 'flex';
+    recentColorsContainer.style.gap = '4px';
+    recentColorsContainer.style.marginLeft = '6px';
+    
+    function renderRecentSwatches() {
+      recentColorsContainer.innerHTML = '';
+      recentColors.forEach(color => {
+        const swatch = document.createElement('div');
+        swatch.style.width = '14px';
+        swatch.style.height = '14px';
+        swatch.style.borderRadius = '50%';
+        swatch.style.background = color;
+        swatch.style.border = '1px solid #475569';
+        swatch.style.cursor = 'pointer';
+        swatch.title = color;
+        
+        swatch.addEventListener('click', () => {
+          bubble.text_color = color;
+          autoColorCheck.checked = false;
+          colorInput.style.opacity = '1.0';
+          colorInput.value = color;
+          saveCurrentPageTranslation();
+          if (isPreviewMode) renderTypesetImage();
+          renderRecentSwatches();
+        });
+        recentColorsContainer.appendChild(swatch);
+      });
+    }
+    
+    autoColorCheck.addEventListener('change', (e) => {
+      if (e.target.checked) {
         delete bubble.text_color;
+        colorInput.style.opacity = '0.3';
+      } else {
+        bubble.text_color = colorInput.value;
+        colorInput.style.opacity = '1.0';
       }
       saveCurrentPageTranslation();
       if (isPreviewMode) renderTypesetImage();
     });
     
-    controlsRow.appendChild(colorLabel);
-    controlsRow.appendChild(colorSelect);
-
-    // Box position & size adjustment controls row
-    const adjustRow = document.createElement('div');
-    adjustRow.className = 'card-adjust-row';
-    adjustRow.style.display = 'flex';
-    adjustRow.style.alignItems = 'center';
-    adjustRow.style.flexWrap = 'wrap';
-    adjustRow.style.gap = '6px';
-    adjustRow.style.marginTop = '6px';
-    
-    const adjustLabel = document.createElement('span');
-    adjustLabel.textContent = 'ปรับกรอบ:';
-    adjustLabel.style.fontSize = '12px';
-    adjustLabel.style.color = '#94a3b8';
-    adjustLabel.style.marginRight = '4px';
-    
-    const createBtn = (text, onClick, title) => {
-      const btn = document.createElement('button');
-      btn.textContent = text;
-      btn.title = title;
-      btn.style.padding = '2px 6px';
-      btn.style.fontSize = '11px';
-      btn.style.background = '#334155';
-      btn.style.border = 'none';
-      btn.style.color = '#f1f5f9';
-      btn.style.borderRadius = '3px';
-      btn.style.cursor = 'pointer';
-      btn.addEventListener('click', () => {
-        onClick();
-        delete cleanedBgCache[activePage.name];
-        saveCurrentPageTranslation();
-        updateSVGOverlayOnly();
-        if (isPreviewMode) renderTypesetImage();
-      });
-      return btn;
-    };
-    
-    const moveAmount = 15;
-    const sizeAmount = 15;
-    
-    const btnUp = createBtn('🔼', () => {
-      bubble.box_2d[0] = Math.max(0, bubble.box_2d[0] - moveAmount);
-      bubble.box_2d[2] = Math.max(0, bubble.box_2d[2] - moveAmount);
-    }, 'เลื่อนขึ้น');
-    
-    const btnDown = createBtn('🔽', () => {
-      bubble.box_2d[0] = Math.min(1000, bubble.box_2d[0] + moveAmount);
-      bubble.box_2d[2] = Math.min(1000, bubble.box_2d[2] + moveAmount);
-    }, 'เลื่อนลง');
-    
-    const btnLeft = createBtn('◀️', () => {
-      bubble.box_2d[1] = Math.max(0, bubble.box_2d[1] - moveAmount);
-      bubble.box_2d[3] = Math.max(0, bubble.box_2d[3] - moveAmount);
-    }, 'เลื่อนซ้าย');
-    
-    const btnRight = createBtn('▶️', () => {
-      bubble.box_2d[1] = Math.min(1000, bubble.box_2d[1] + moveAmount);
-      bubble.box_2d[3] = Math.min(1000, bubble.box_2d[3] + moveAmount);
-    }, 'เลื่อนขวา');
-    
-    const btnTall = createBtn('↕️+', () => {
-      bubble.box_2d[0] = Math.max(0, bubble.box_2d[0] - sizeAmount);
-      bubble.box_2d[2] = Math.min(1000, bubble.box_2d[2] + sizeAmount);
-    }, 'ขยายแนวตั้ง');
-    
-    const btnShort = createBtn('↕️-', () => {
-      if (bubble.box_2d[2] - bubble.box_2d[0] > sizeAmount * 2) {
-        bubble.box_2d[0] += sizeAmount;
-        bubble.box_2d[2] -= sizeAmount;
+    colorInput.addEventListener('input', (e) => {
+      const val = e.target.value;
+      bubble.text_color = val;
+      autoColorCheck.checked = false;
+      colorInput.style.opacity = '1.0';
+      
+      if (!recentColors.includes(val)) {
+        recentColors.unshift(val);
+        if (recentColors.length > 8) {
+          recentColors.pop();
+        }
       }
-    }, 'หดแนวตั้ง');
+      
+      saveCurrentPageTranslation();
+      if (isPreviewMode) renderTypesetImage();
+      renderRecentSwatches();
+    });
     
-    const btnWide = createBtn('↔️+', () => {
-      bubble.box_2d[1] = Math.max(0, bubble.box_2d[1] - sizeAmount);
-      bubble.box_2d[3] = Math.min(1000, bubble.box_2d[3] + sizeAmount);
-    }, 'ขยายแนวนอน');
+    autoColorLabel.appendChild(autoColorCheck);
+    autoColorLabel.appendChild(document.createTextNode('ออโต้'));
     
-    const btnNarrow = createBtn('↔️-', () => {
-      if (bubble.box_2d[3] - bubble.box_2d[1] > sizeAmount * 2) {
-        bubble.box_2d[1] += sizeAmount;
-        bubble.box_2d[3] -= sizeAmount;
-      }
-    }, 'หดแนวนอน');
+    colorRow.appendChild(colorLabel);
+    colorRow.appendChild(colorInput);
+    colorRow.appendChild(autoColorLabel);
+    colorRow.appendChild(recentColorsContainer);
     
-    adjustRow.appendChild(adjustLabel);
-    adjustRow.appendChild(btnUp);
-    adjustRow.appendChild(btnDown);
-    adjustRow.appendChild(btnLeft);
-    adjustRow.appendChild(btnRight);
-    
-    const divider = document.createElement('span');
-    divider.style.width = '1px';
-    divider.style.height = '14px';
-    divider.style.background = '#475569';
-    divider.style.margin = '0 2px';
-    adjustRow.appendChild(divider);
-    
-    adjustRow.appendChild(btnTall);
-    adjustRow.appendChild(btnShort);
-    adjustRow.appendChild(btnWide);
-    adjustRow.appendChild(btnNarrow);
+    renderRecentSwatches();
 
     card.appendChild(header);
     card.appendChild(origText);
     card.appendChild(transInput);
-    card.appendChild(controlsRow);
-    card.appendChild(adjustRow);
+    card.appendChild(fontRow);
+    card.appendChild(colorRow);
 
     bubblesList.appendChild(card);
   });
@@ -543,6 +601,12 @@ function updateSVGOverlayOnly() {
       rect.setAttribute('y', ymin);
       rect.setAttribute('width', xmax - xmin);
       rect.setAttribute('height', ymax - ymin);
+    }
+    const handle = bubbleOverlay.querySelector(`.bubble-resize-handle[data-id="${bubble.bubble_id}"]`);
+    if (handle && bubble.box_2d) {
+      const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+      handle.setAttribute('cx', xmax);
+      handle.setAttribute('cy', ymax);
     }
   });
 }
@@ -847,6 +911,9 @@ async function renderTypesetImage() {
   
   ctx.drawImage(cleanedImgElement, 0, 0);
   
+  // Overlay custom paint layer behind text
+  ctx.drawImage(colorPaintCanvas, 0, 0);
+  
   if (objectUrlToCleanup) {
     URL.revokeObjectURL(objectUrlToCleanup);
   }
@@ -870,7 +937,7 @@ async function renderTypesetImage() {
       ? sampleBubbleBackground(ctx, x1, y1, w, h)
       : '#ffffff';
       
-    if (bubble.translated_text) {
+    if (bubble.translated_text && !bubble.hidden) {
       drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color);
     }
   });
@@ -1123,6 +1190,28 @@ exportChapterBtn.addEventListener('click', async () => {
       }
       
       ctx.drawImage(cleanedImg, 0, 0);
+      
+      // Load and draw custom paint layer for export
+      try {
+        const paintRes = await window.api.loadCustomPaint({
+          project: currentProject,
+          chapter: currentChapter,
+          pageName: imgObj.name
+        });
+        if (paintRes && paintRes.exists) {
+          const paintImg = new Image();
+          const formattedPath = paintRes.absolutePath.replace(/\\/g, '/');
+          paintImg.src = `file:///${formattedPath}`;
+          await new Promise((resolve) => {
+            paintImg.onload = resolve;
+            paintImg.onerror = resolve;
+          });
+          ctx.drawImage(paintImg, 0, 0);
+        }
+      } catch (err) {
+        console.warn('[⚠️] Failed to load custom paint for export:', err);
+      }
+      
       if (tempUrl) URL.revokeObjectURL(tempUrl);
       
       if (translation && translation.length > 0) {
@@ -1145,7 +1234,7 @@ exportChapterBtn.addEventListener('click', async () => {
             ? sampleBubbleBackground(ctx, x1, y1, w, h)
             : '#ffffff';
             
-          if (bubble.translated_text) {
+          if (bubble.translated_text && !bubble.hidden) {
             drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color);
           }
         });
@@ -1179,11 +1268,12 @@ exportChapterBtn.addEventListener('click', async () => {
 // Phase 3: Typesetting Studio Interactive Tools Implementation
 // ==========================================================
 
-let currentTool = 'select'; // 'select', 'add', 'brush'
+let currentTool = 'select'; // 'select', 'add', 'brush', 'paint'
 let isDragging = false;
 let isResizing = false;
 let isCreating = false;
 let isPainting = false;
+let isColorPainting = false;
 let activeBubbleId = null;
 let dragStartX = 0;
 let dragStartY = 0;
@@ -1194,16 +1284,34 @@ let brushSize = 20;
 let lastBrushX = 0;
 let lastBrushY = 0;
 
+// Color Paint Brush state
+let paintSize = 20;
+let paintOpacity = 1.0;
+let paintColor = '#ffffff';
+let lastPaintX = 0;
+let lastPaintY = 0;
+
 // Grab DOM elements
 const studioToolbar = document.getElementById('studioToolbar');
 const toolSelectBtn = document.getElementById('toolSelectBtn');
 const toolAddBtn = document.getElementById('toolAddBtn');
 const toolBrushBtn = document.getElementById('toolBrushBtn');
+const toolPaintBtn = document.getElementById('toolPaintBtn');
+
 const brushOptions = document.getElementById('brushOptions');
 const brushSizeRange = document.getElementById('brushSizeRange');
 const brushSizeVal = document.getElementById('brushSizeVal');
 const clearBrushBtn = document.getElementById('clearBrushBtn');
 const brushMaskCanvas = document.getElementById('brushMaskCanvas');
+
+const paintOptions = document.getElementById('paintOptions');
+const paintColorInput = document.getElementById('paintColorInput');
+const paintOpacityRange = document.getElementById('paintOpacityRange');
+const paintOpacityVal = document.getElementById('paintOpacityVal');
+const paintSizeRange = document.getElementById('paintSizeRange');
+const paintSizeVal = document.getElementById('paintSizeVal');
+const clearPaintBtn = document.getElementById('clearPaintBtn');
+const colorPaintCanvas = document.getElementById('colorPaintCanvas');
 
 // 1. Tool Switcher
 function switchTool(tool) {
@@ -1213,9 +1321,10 @@ function switchTool(tool) {
   toolSelectBtn.className = (tool === 'select') ? 'btn btn-tool active' : 'btn btn-tool';
   toolAddBtn.className = (tool === 'add') ? 'btn btn-tool active' : 'btn btn-tool';
   toolBrushBtn.className = (tool === 'brush') ? 'btn btn-tool active' : 'btn btn-tool';
+  toolPaintBtn.className = (tool === 'paint') ? 'btn btn-tool active' : 'btn btn-tool';
   
   // Apply styled color overrides to btn-tool dynamically
-  const btns = [toolSelectBtn, toolAddBtn, toolBrushBtn];
+  const btns = [toolSelectBtn, toolAddBtn, toolBrushBtn, toolPaintBtn];
   btns.forEach(btn => {
     if (btn.className.includes('active')) {
       btn.style.background = '#3b82f6';
@@ -1230,14 +1339,25 @@ function switchTool(tool) {
   
   // Toggle Options & pointer events
   brushOptions.style.display = (tool === 'brush') ? 'flex' : 'none';
+  paintOptions.style.display = (tool === 'paint') ? 'flex' : 'none';
+  
+  // Always display colorPaintCanvas so the user can see their background colors
+  colorPaintCanvas.style.display = 'block';
   
   if (tool === 'brush') {
     brushMaskCanvas.style.display = 'block';
     brushMaskCanvas.style.pointerEvents = 'auto';
+    colorPaintCanvas.style.pointerEvents = 'none';
+    bubbleOverlay.style.pointerEvents = 'none';
+  } else if (tool === 'paint') {
+    brushMaskCanvas.style.display = 'none';
+    brushMaskCanvas.style.pointerEvents = 'none';
+    colorPaintCanvas.style.pointerEvents = 'auto';
     bubbleOverlay.style.pointerEvents = 'none';
   } else {
     brushMaskCanvas.style.display = 'none';
     brushMaskCanvas.style.pointerEvents = 'none';
+    colorPaintCanvas.style.pointerEvents = 'none';
     bubbleOverlay.style.pointerEvents = 'auto';
   }
 }
@@ -1245,10 +1365,25 @@ function switchTool(tool) {
 toolSelectBtn.addEventListener('click', () => switchTool('select'));
 toolAddBtn.addEventListener('click', () => switchTool('add'));
 toolBrushBtn.addEventListener('click', () => switchTool('brush'));
+toolPaintBtn.addEventListener('click', () => switchTool('paint'));
 
 brushSizeRange.addEventListener('input', (e) => {
   brushSize = parseInt(e.target.value);
   brushSizeVal.textContent = brushSize;
+});
+
+paintSizeRange.addEventListener('input', (e) => {
+  paintSize = parseInt(e.target.value);
+  paintSizeVal.textContent = paintSize;
+});
+
+paintOpacityRange.addEventListener('input', (e) => {
+  paintOpacity = parseFloat(e.target.value) / 100;
+  paintOpacityVal.textContent = paintOpacity.toFixed(1);
+});
+
+paintColorInput.addEventListener('input', (e) => {
+  paintColor = e.target.value;
 });
 
 // Clear custom mask
@@ -1267,6 +1402,28 @@ clearBrushBtn.addEventListener('click', async () => {
     });
   } catch (err) {
     console.warn('[⚠️] Failed to clear mask from disk:', err);
+  }
+  
+  delete cleanedBgCache[activePage.name];
+  if (isPreviewMode) renderTypesetImage();
+});
+
+// Clear custom paint background
+clearPaintBtn.addEventListener('click', async () => {
+  const activePage = images[activeIndex];
+  if (!activePage) return;
+  
+  const ctx = colorPaintCanvas.getContext('2d');
+  ctx.clearRect(0, 0, colorPaintCanvas.width, colorPaintCanvas.height);
+  
+  try {
+    await window.api.clearCustomPaint({
+      project: currentProject,
+      chapter: currentChapter,
+      pageName: activePage.name
+    });
+  } catch (err) {
+    console.warn('[⚠️] Failed to clear paint from disk:', err);
   }
   
   delete cleanedBgCache[activePage.name];
@@ -1519,4 +1676,77 @@ function drawBrushStroke(x, y, isMove = false) {
   
   lastBrushX = x;
   lastBrushY = y;
+}
+
+// 5. Color Paint drawing event listeners on colorPaintCanvas
+function getColorCanvasCoords(e) {
+  const rect = colorPaintCanvas.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * colorPaintCanvas.width;
+  const y = ((e.clientY - rect.top) / rect.height) * colorPaintCanvas.height;
+  return { x, y };
+}
+
+colorPaintCanvas.addEventListener('mousedown', (e) => {
+  if (currentTool !== 'paint') return;
+  isColorPainting = true;
+  const coords = getColorCanvasCoords(e);
+  lastPaintX = coords.x;
+  lastPaintY = coords.y;
+  
+  drawColorPaintStroke(coords.x, coords.y);
+});
+
+colorPaintCanvas.addEventListener('mousemove', (e) => {
+  if (currentTool !== 'paint' || !isColorPainting) return;
+  const coords = getColorCanvasCoords(e);
+  drawColorPaintStroke(coords.x, coords.y, true);
+});
+
+window.addEventListener('mouseup', async () => {
+  if (isColorPainting) {
+    isColorPainting = false;
+    
+    const activePage = images[activeIndex];
+    if (activePage) {
+      const dataUrl = colorPaintCanvas.toDataURL('image/png');
+      try {
+        await window.api.saveCustomPaint({
+          project: currentProject,
+          chapter: currentChapter,
+          pageName: activePage.name,
+          dataUrl: dataUrl
+        });
+      } catch (err) {
+        console.warn('[⚠️] Failed to save custom paint layer:', err);
+      }
+      
+      delete cleanedBgCache[activePage.name];
+      if (isPreviewMode) renderTypesetImage();
+    }
+  }
+});
+
+function drawColorPaintStroke(x, y, isMove = false) {
+  const ctx = colorPaintCanvas.getContext('2d');
+  ctx.strokeStyle = paintColor;
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.lineWidth = paintSize;
+  ctx.globalAlpha = paintOpacity;
+  
+  ctx.beginPath();
+  if (isMove) {
+    ctx.moveTo(lastPaintX, lastPaintY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  } else {
+    ctx.arc(x, y, paintSize / 2, 0, Math.PI * 2);
+    ctx.fillStyle = paintColor;
+    ctx.fill();
+  }
+  
+  ctx.globalAlpha = 1.0;
+  
+  lastPaintX = x;
+  lastPaintY = y;
 }

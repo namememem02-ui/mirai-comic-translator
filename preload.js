@@ -12,5 +12,8 @@ contextBridge.exposeInMainWorld('api', {
   loadMemory: (args) => ipcRenderer.invoke('load-memory', args),
   saveCustomMask: (args) => ipcRenderer.invoke('save-custom-mask', args),
   loadCustomMask: (args) => ipcRenderer.invoke('load-custom-mask', args),
-  clearCustomMask: (args) => ipcRenderer.invoke('clear-custom-mask', args)
+  clearCustomMask: (args) => ipcRenderer.invoke('clear-custom-mask', args),
+  saveCustomPaint: (args) => ipcRenderer.invoke('save-custom-paint', args),
+  loadCustomPaint: (args) => ipcRenderer.invoke('load-custom-paint', args),
+  clearCustomPaint: (args) => ipcRenderer.invoke('clear-custom-paint', args)
 });

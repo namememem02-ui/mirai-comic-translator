@@ -363,3 +363,47 @@ ipcMain.handle('clear-custom-mask', (_e, { project, chapter, pageName }) => {
     return { error: err.message };
   }
 });
+
+ipcMain.handle('save-custom-paint', (_e, { project, chapter, pageName, dataUrl }) => {
+  try {
+    const dir = path.join(PROJECTS_DIR, project, chapter);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+    const baseName = path.basename(pageName, path.extname(pageName));
+    const file = path.join(dir, `${baseName}_custom_paint.png`);
+
+    const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    fs.writeFileSync(file, buffer);
+    return { success: true, absolutePath: file };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('load-custom-paint', (_e, { project, chapter, pageName }) => {
+  try {
+    const baseName = path.basename(pageName, path.extname(pageName));
+    const file = path.join(PROJECTS_DIR, project, chapter, `${baseName}_custom_paint.png`);
+    if (fs.existsSync(file)) {
+      return { exists: true, absolutePath: file };
+    }
+    return { exists: false };
+  } catch (err) {
+    return { exists: false, error: err.message };
+  }
+});
+
+ipcMain.handle('clear-custom-paint', (_e, { project, chapter, pageName }) => {
+  try {
+    const baseName = path.basename(pageName, path.extname(pageName));
+    const file = path.join(PROJECTS_DIR, project, chapter, `${baseName}_custom_paint.png`);
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});

@@ -89,11 +89,26 @@
           <button id="toolBrushBtn" class="btn btn-tool" title="แปรงรีทัชลบอักษร/ลบเศษคำแปลส่วนเกิน" style="font-size: 12px; padding: 4px 10px; background: #1e293b; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; cursor: pointer;">
             🖌️ แปรงรีทัชลบคำ
           </button>
+          <button id="toolPaintBtn" class="btn btn-tool" title="แปรงทาสี/ถมสีพื้นหลังข้อความ" style="font-size: 12px; padding: 4px 10px; background: #1e293b; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; cursor: pointer;">
+            🎨 แปรงทาสีหลังอักษร
+          </button>
         </div>
         <div id="brushOptions" class="brush-options" style="display: none; align-items: center; gap: 8px; font-size: 12px; color: #f8fafc;">
           <label for="brushSizeRange">ขนาดแปรง: <span id="brushSizeVal">20</span>px</label>
           <input type="range" id="brushSizeRange" min="5" max="100" value="20" style="cursor: pointer;" />
           <button id="clearBrushBtn" class="btn" style="font-size: 11px; padding: 2px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">🧹 ล้างแปรง</button>
+        </div>
+        <div id="paintOptions" class="paint-options" style="display: none; align-items: center; gap: 10px; font-size: 12px; color: #f8fafc;">
+          <label for="paintColorInput">สีแปรง:</label>
+          <input type="color" id="paintColorInput" value="#ffffff" style="cursor: pointer; width: 30px; height: 22px; padding: 0; border: 1px solid #475569; background: none; border-radius: 4px;" />
+          
+          <label for="paintOpacityRange">ความโปร่งใส: <span id="paintOpacityVal">1.0</span></label>
+          <input type="range" id="paintOpacityRange" min="10" max="100" value="100" style="cursor: pointer; width: 80px;" />
+          
+          <label for="paintSizeRange">ขนาดแปรง: <span id="paintSizeVal">20</span>px</label>
+          <input type="range" id="paintSizeRange" min="5" max="100" value="20" style="cursor: pointer; width: 80px;" />
+          
+          <button id="clearPaintBtn" class="btn" style="font-size: 11px; padding: 2px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">🧹 ล้างสี</button>
         </div>
       </div>
 
@@ -105,6 +120,8 @@
         <div id="viewportContainer" class="viewport-container" style="display: none; position: relative;">
           <!-- Custom mask drawing canvas (placed exactly over activeImage) -->
           <canvas id="brushMaskCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.45; display: none; z-index: 5;"></canvas>
+          <!-- Custom colored paint canvas (placed below SVG overlays but above activeImage) -->
+          <canvas id="colorPaintCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 1.0; display: none; z-index: 4;"></canvas>
           <img id="activeImage" src="" alt="Manga Page" />
           <!-- Overlay SVG for bubble bounding box highlights -->
           <svg id="bubbleOverlay" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
