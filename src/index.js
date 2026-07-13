@@ -1039,10 +1039,6 @@ async function renderTypesetImage() {
     }
   }
   
-  if (objectUrlToCleanup) {
-    URL.revokeObjectURL(objectUrlToCleanup);
-  }
-  
   // Handle smooth flat color erase fallback if clean background load failed
   if (cleanedImgElement === activeImage) {
     const tempCanvas = document.createElement('canvas');
@@ -1066,7 +1062,21 @@ async function renderTypesetImage() {
     });
     activeImage.src = tempCanvas.toDataURL('image/jpeg', 0.95);
   } else {
-    activeImage.src = cleanedImgElement.src;
+    // Prefer loading from base64 cached background string
+    if (cacheKey && cleanedBgCache[cacheKey]) {
+      activeImage.src = cleanedBgCache[cacheKey];
+    } else {
+      activeImage.src = cleanedImgElement.src;
+    }
+  }
+  
+  if (objectUrlToCleanup) {
+    // Defer revoking to allow browser to load the stream safely
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(objectUrlToCleanup);
+      } catch (err) {}
+    }, 1000);
   }
   
   canvasLoader.style.display = 'none';
