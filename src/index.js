@@ -42,6 +42,7 @@ let activePageTranslation = [];
 let projectGlossary = {}; // { eng: thai }
 const cleanedBgCache = {}; // { pageName: dataUrl }
 const recentColors = ['#000000', '#ffffff', '#ef4444', '#f59e0b', '#3b82f6'];
+const pageRenderGuard = window.RenderGuard.createRenderGuard();
 
 // App Settings (loaded from disk, applied globally)
 let appSettings = {
@@ -892,9 +893,24 @@ function renderThumbnails() {
   });
 }
 
+function clearTransientPreviewLayers() {
+  const typesetCanvas = document.getElementById('typesetTextCanvas');
+  if (typesetCanvas) {
+    const context = typesetCanvas.getContext('2d');
+    context.clearRect(0, 0, typesetCanvas.width, typesetCanvas.height);
+  }
+  bubbleOverlay.innerHTML = '';
+  bubblesList.innerHTML = '';
+  canvasLoader.style.display = 'none';
+}
+
 // 5. Select Active Page
 async function selectPage(idx) {
+  const activePage = images[idx];
+  if (!activePage) return;
+  const renderToken = pageRenderGuard.begin(activePage.name);
   activeIndex = idx;
+  clearTransientPreviewLayers();
   
   // Highlight active thumbnail
   const items = thumbnailsList.querySelectorAll('.thumb-item');
@@ -903,12 +919,7 @@ async function selectPage(idx) {
     else item.classList.remove('active');
   });
 
-  const activePage = images[idx];
   activePageTitle.textContent = activePage.name;
-
-  // Clear Overlay
-  bubbleOverlay.innerHTML = '';
-  bubblesList.innerHTML = '';
 
   // Load Existing Page Translation
   const existingTranslation = await window.api.loadPageTranslation({
@@ -916,6 +927,7 @@ async function selectPage(idx) {
     chapter: currentChapter,
     pageName: activePage.name
   });
+  if (!pageRenderGuard.isCurrent(renderToken)) return;
 
   if (existingTranslation) {
     activePageTranslation = existingTranslation;
@@ -931,6 +943,7 @@ async function selectPage(idx) {
 
   // Load custom mask and paint layers when raw image is loaded
   activeImage.onload = async () => {
+    if (!pageRenderGuard.isCurrent(renderToken)) return;
     if (activeImage.src.startsWith('data:')) return;
 
     applyViewMode('fit-width');
@@ -952,11 +965,13 @@ async function selectPage(idx) {
         chapter: currentChapter,
         pageName: activePage.name
       });
+      if (!pageRenderGuard.isCurrent(renderToken)) return;
       if (maskRes && maskRes.exists) {
         const maskImg = new Image();
         const formattedPath = maskRes.absolutePath.replace(/\\/g, '/');
         maskImg.src = `file:///${formattedPath}`;
         maskImg.onload = () => {
+          if (!pageRenderGuard.isCurrent(renderToken)) return;
           ctx.drawImage(maskImg, 0, 0);
         };
       }
@@ -970,11 +985,13 @@ async function selectPage(idx) {
         chapter: currentChapter,
         pageName: activePage.name
       });
+      if (!pageRenderGuard.isCurrent(renderToken)) return;
       if (paintRes && paintRes.exists) {
         const paintImg = new Image();
         const formattedPath = paintRes.absolutePath.replace(/\\/g, '/');
         paintImg.src = `file:///${formattedPath}`;
         paintImg.onload = () => {
+          if (!pageRenderGuard.isCurrent(renderToken)) return;
           pctx.drawImage(paintImg, 0, 0);
         };
       }
@@ -1850,13 +1867,15 @@ previewToggleBtn.addEventListener('click', () => {
 });
 
 activeImage.addEventListener('load', () => {
+  const renderToken = pageRenderGuard.current();
+  if (!pageRenderGuard.isCurrent(renderToken)) return;
   if (activeImage.src.startsWith('data:')) {
     initBgSampler();
-    renderTypesetTextLayer();
+    renderTypesetTextLayer(renderToken);
     return;
   }
   if (isPreviewMode && activePageTranslation.length > 0) {
-    renderTypesetImage();
+    renderTypesetImage(renderToken);
   }
 });
 
@@ -1876,7 +1895,8 @@ function sampleImageBackgroundAt(x, y, w, h) {
   return sampleBubbleBackground(ctx, x, y, w, h);
 }
 
-async function renderTypesetImage() {
+async function renderTypesetImage(renderToken = pageRenderGuard.current()) {
+  if (!pageRenderGuard.isCurrent(renderToken)) return;
   canvasLoader.style.display = 'flex';
   const originalSrc = activeImage.src;
   const canvas = document.createElement('canvas');
@@ -1887,6 +1907,7 @@ async function renderTypesetImage() {
   let objectUrlToCleanup = null;
   const activePage = images[activeIndex];
   const cacheKey = activePage ? activePage.name : null;
+  if (!activePage || cacheKey !== renderToken.pageKey) return;
   
   if (cacheKey && cleanedBgCache[cacheKey]) {
     // Cache HIT: Load clean background instantly
@@ -1896,11 +1917,13 @@ async function renderTypesetImage() {
       cleanImg.onload = resolve;
       cleanImg.onerror = resolve;
     });
+    if (!pageRenderGuard.isCurrent(renderToken)) return;
     cleanedImgElement = cleanImg;
   } else {
     // Cache MISS: Run PyTorch AI Inpainter and store in cache
     try {
       const inpaintedBlob = await runAIInpaint(originalSrc, activePageTranslation, canvas.width, canvas.height);
+      if (!pageRenderGuard.isCurrent(renderToken)) return;
       objectUrlToCleanup = URL.createObjectURL(inpaintedBlob);
       
       const cleanImg = new Image();
@@ -1909,6 +1932,10 @@ async function renderTypesetImage() {
         cleanImg.onload = resolve;
         cleanImg.onerror = reject;
       });
+      if (!pageRenderGuard.isCurrent(renderToken)) {
+        URL.revokeObjectURL(objectUrlToCleanup);
+        return;
+      }
       cleanedImgElement = cleanImg;
       
       // Store clean base64 image in memory cache
@@ -1921,9 +1948,12 @@ async function renderTypesetImage() {
         cleanedBgCache[cacheKey] = tempCanvas.toDataURL('image/jpeg', 0.95);
       }
     } catch (err) {
+      if (!pageRenderGuard.isCurrent(renderToken)) return;
       console.warn('[⚠️] AI Inpainting failed or offline. Falling back to smooth flat color erase. Error:', err.message);
     }
   }
+
+  if (!pageRenderGuard.isCurrent(renderToken)) return;
   
   // Handle smooth flat color erase fallback if clean background load failed
   if (cleanedImgElement === activeImage) {
@@ -1965,10 +1995,13 @@ async function renderTypesetImage() {
     }, 1000);
   }
   
-  canvasLoader.style.display = 'none';
+  if (pageRenderGuard.isCurrent(renderToken)) {
+    canvasLoader.style.display = 'none';
+  }
 }
 
-function renderTypesetTextLayer() {
+function renderTypesetTextLayer(renderToken = pageRenderGuard.current()) {
+  if (!pageRenderGuard.isCurrent(renderToken)) return;
   const canvas = document.getElementById('typesetTextCanvas');
   if (!canvas) return;
   canvas.width = activeImage.naturalWidth || 800;
