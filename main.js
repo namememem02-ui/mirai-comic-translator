@@ -4,6 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const { readJsonWithRecovery, writeJsonAtomic } = require('./lib/atomic-json');
 const { buildTranslationPrompt } = require('./lib/translation-prompt');
+const { createWatermarkStore } = require('./lib/watermark-store');
 
 let mainWin = null;
 
@@ -15,6 +16,7 @@ const SHARED_CONFIG_DIR = path.join(
 const SHARED_CONFIG_PATH = path.join(SHARED_CONFIG_DIR, 'config.json');
 
 const PROJECTS_DIR = path.join(__dirname, 'projects');
+const watermarkStore = createWatermarkStore(PROJECTS_DIR);
 
 // Ensure projects directory exists
 if (!fs.existsSync(PROJECTS_DIR)) {
@@ -69,6 +71,27 @@ ipcMain.handle('select-folder', async () => {
   }
   return result.filePaths[0];
 });
+
+ipcMain.handle('select-watermark', async (_e, { project, chapter }) => {
+  const result = await dialog.showOpenDialog(mainWin, {
+    properties: ['openFile'],
+    filters: [{ name: 'Watermark image', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+  });
+  if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+  const saved = watermarkStore.importAsset(project, chapter, result.filePaths[0]);
+  return { ...saved, fileUrl: `file:///${saved.absolutePath.replace(/\\/g, '/')}` };
+});
+
+ipcMain.handle('load-watermark', (_e, { project, chapter }) => {
+  const saved = watermarkStore.load(project, chapter);
+  return { ...saved, fileUrl: saved.exists ? `file:///${saved.absolutePath.replace(/\\/g, '/')}` : '' };
+});
+
+ipcMain.handle('save-watermark-settings', (_e, { project, chapter, settings }) =>
+  watermarkStore.saveSettings(project, chapter, settings));
+
+ipcMain.handle('remove-watermark', (_e, { project, chapter }) =>
+  watermarkStore.remove(project, chapter));
 
 ipcMain.handle('get-config', () => {
   const cfg = loadSharedConfig();

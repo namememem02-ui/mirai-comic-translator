@@ -106,8 +106,8 @@
         </div>
       </div>
       <!-- Studio Toolbar -->
-      <div id="studioToolbar" class="studio-toolbar" style="display: none; align-items: center; justify-content: space-between; padding: 6px 12px; background: #1e293b; border-bottom: 1px solid #334155; gap: 12px;">
-        <div class="toolbar-modes" style="display: flex; gap: 6px; align-items:center;">
+      <div id="studioToolbar" class="studio-toolbar" style="display: none; align-items: center; justify-content: space-between; flex-wrap:wrap; padding: 6px 12px; background: #1e293b; border-bottom: 1px solid #334155; gap: 12px;">
+        <div class="toolbar-modes" style="display: flex; gap: 6px; align-items:center; flex-wrap:wrap;">
           <!-- Undo / Redo -->
           <button id="undoBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:4px 8px; font-size:13px; cursor:pointer;" title="ย้อนกลับ (Ctrl+Z)" disabled>↩️</button>
           <button id="redoBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:4px 8px; font-size:13px; cursor:pointer;" title="ทำซ้ำ (Ctrl+Shift+Z)" disabled>↪️</button>
@@ -124,6 +124,7 @@
           <button id="toolPaintBtn" class="btn btn-tool" title="แปรงทาสี/ถมสีพื้นหลังข้อความ" style="font-size: 12px; padding: 4px 10px; background: #1e293b; border: 1px solid #334155; color: #94a3b8; border-radius: 4px; cursor: pointer;">
             🎨 แปรงทาสีหลังอักษร
           </button>
+          <button id="watermarkToggleBtn" class="btn btn-tool" title="ตั้งค่าลายน้ำประจำตอน" style="font-size:12px; padding:4px 10px; background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:4px; cursor:pointer;">💧 ลายน้ำ</button>
         </div>
         <div id="brushOptions" class="brush-options" style="display: none; align-items: center; gap: 8px; font-size: 12px; color: #f8fafc;">
           <label for="brushSizeRange">ขนาดแปรง: <span id="brushSizeVal">20</span>px</label>
@@ -149,6 +150,16 @@
           
           <button id="clearPaintBtn" class="btn" style="font-size: 11px; padding: 2px 8px; background: #ef4444; color: white; border: none; border-radius: 4px; cursor: pointer;">🧹 ล้างสี</button>
         </div>
+        <div id="watermarkOptions" style="display:none; align-items:center; gap:8px; flex-wrap:wrap; font-size:11px; color:#cbd5e1;">
+          <button id="selectWatermarkBtn" class="btn" style="font-size:11px; padding:3px 8px;">เลือกรูป</button>
+          <label><input id="watermarkEnabled" type="checkbox"> เปิดใช้</label>
+          <label>จาง <span id="watermarkOpacityVal">35%</span></label>
+          <input id="watermarkOpacity" type="range" min="0" max="100" value="35" style="width:75px;">
+          <label>ขนาด <span id="watermarkSizeVal">15%</span></label>
+          <input id="watermarkSize" type="range" min="5" max="50" value="15" style="width:75px;">
+          <button id="removeWatermarkBtn" class="btn" style="font-size:11px; padding:3px 8px; color:#fca5a5;">ลบ</button>
+          <span id="watermarkStatus" style="color:#64748b;"></span>
+        </div>
       </div>
 
       <div class="canvas-wrapper" style="position: relative;">
@@ -158,11 +169,12 @@
         </div>
         <div id="viewportContainer" class="viewport-container" style="display: none; position: relative;">
           <!-- Custom mask drawing canvas (placed exactly over activeImage) -->
-          <canvas id="brushMaskCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.45; display: none; z-index: 5;"></canvas>
+          <canvas id="brushMaskCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 0.45; display: none; z-index: 6;"></canvas>
           <!-- SVG highlight outline overlay layer -->
-          <svg id="bubbleOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 4;" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
+          <svg id="bubbleOverlay" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5;" viewBox="0 0 1000 1000" preserveAspectRatio="none"></svg>
           <!-- Transparent typeset text canvas overlay layer -->
           <canvas id="typesetTextCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3;"></canvas>
+          <canvas id="watermarkCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:4;"></canvas>
           <!-- Custom colored paint canvas overlay layer -->
           <canvas id="colorPaintCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 1.0; display: none; z-index: 2;"></canvas>
           <img id="activeImage" src="" alt="Manga Page" style="z-index: 1;" />
@@ -362,6 +374,7 @@
   <script src="bubble-geometry.js"></script>
   <script src="translation-result.js"></script>
   <script src="render-guard.js"></script>
+  <script src="watermark-geometry.js"></script>
   <script src="index.js"></script>
 </body>
 </html>

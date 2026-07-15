@@ -22,6 +22,10 @@ contextBridge.exposeInMainWorld('api', {
   saveApiKey: (args) => ipcRenderer.invoke('save-api-key', args),
   saveAppSettings: (args) => ipcRenderer.invoke('save-app-settings', args),
   loadAppSettings: () => ipcRenderer.invoke('load-app-settings'),
+  selectWatermark: (args) => ipcRenderer.invoke('select-watermark', args),
+  loadWatermark: (args) => ipcRenderer.invoke('load-watermark', args),
+  saveWatermarkSettings: (args) => ipcRenderer.invoke('save-watermark-settings', args),
+  removeWatermark: (args) => ipcRenderer.invoke('remove-watermark', args),
   deletePageTranslation: (args) => ipcRenderer.invoke('delete-page-translation', args),
   listChapterTranslations: (args) => ipcRenderer.invoke('list-chapter-translations', args)
 });

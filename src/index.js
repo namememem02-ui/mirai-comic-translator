@@ -32,6 +32,17 @@ const glossaryList = document.getElementById('glossaryList');
 const addGlossaryBtn = document.getElementById('addGlossaryBtn');
 const bubblesList = document.getElementById('bubblesList');
 const canvasLoader = document.getElementById('canvasLoader');
+const watermarkCanvas = document.getElementById('watermarkCanvas');
+const watermarkToggleBtn = document.getElementById('watermarkToggleBtn');
+const watermarkOptions = document.getElementById('watermarkOptions');
+const selectWatermarkBtn = document.getElementById('selectWatermarkBtn');
+const watermarkEnabled = document.getElementById('watermarkEnabled');
+const watermarkOpacity = document.getElementById('watermarkOpacity');
+const watermarkOpacityVal = document.getElementById('watermarkOpacityVal');
+const watermarkSize = document.getElementById('watermarkSize');
+const watermarkSizeVal = document.getElementById('watermarkSizeVal');
+const removeWatermarkBtn = document.getElementById('removeWatermarkBtn');
+const watermarkStatus = document.getElementById('watermarkStatus');
 
 // App State
 let currentProject = '';
@@ -43,6 +54,9 @@ let projectGlossary = {}; // { eng: thai }
 const cleanedBgCache = {}; // { pageName: dataUrl }
 const recentColors = ['#000000', '#ffffff', '#ef4444', '#f59e0b', '#3b82f6'];
 const pageRenderGuard = window.RenderGuard.createRenderGuard();
+let watermarkSettings = window.WatermarkGeometry.normalizeSettings({});
+let watermarkImage = null;
+let watermarkDrag = null;
 
 // App Settings (loaded from disk, applied globally)
 let appSettings = {
@@ -835,6 +849,7 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   // Load Glossary memory
   projectGlossary = await window.api.loadMemory({ project: currentProject });
   renderGlossary();
+  await loadChapterWatermark();
 
   // Render Page list thumbnails
   renderThumbnails();
@@ -902,7 +917,174 @@ function clearTransientPreviewLayers() {
   bubbleOverlay.innerHTML = '';
   bubblesList.innerHTML = '';
   canvasLoader.style.display = 'none';
+  const watermarkContext = watermarkCanvas.getContext('2d');
+  watermarkContext.clearRect(0, 0, watermarkCanvas.width, watermarkCanvas.height);
 }
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('ไม่สามารถโหลดรูปลายน้ำได้'));
+    image.src = src;
+  });
+}
+
+function syncWatermarkControls() {
+  watermarkEnabled.checked = watermarkSettings.enabled;
+  watermarkOpacity.value = Math.round(watermarkSettings.opacity * 100);
+  watermarkOpacityVal.textContent = `${watermarkOpacity.value}%`;
+  watermarkSize.value = Math.round(watermarkSettings.widthRatio * 100);
+  watermarkSizeVal.textContent = `${watermarkSize.value}%`;
+}
+
+async function loadChapterWatermark() {
+  watermarkImage = null;
+  watermarkStatus.textContent = '';
+  const result = await window.api.loadWatermark({ project: currentProject, chapter: currentChapter });
+  watermarkSettings = window.WatermarkGeometry.normalizeSettings(result?.settings || {});
+  if (result?.exists && result.fileUrl) {
+    try {
+      watermarkImage = await loadImageElement(result.fileUrl);
+    } catch (err) {
+      watermarkStatus.textContent = err.message;
+    }
+  }
+  syncWatermarkControls();
+  renderWatermarkPreview();
+}
+
+async function saveChapterWatermarkSettings() {
+  if (!currentProject || !currentChapter) return;
+  watermarkSettings = window.WatermarkGeometry.normalizeSettings(watermarkSettings);
+  await window.api.saveWatermarkSettings({
+    project: currentProject,
+    chapter: currentChapter,
+    settings: watermarkSettings,
+  });
+}
+
+function getWatermarkRect(width, height) {
+  if (!watermarkImage) return null;
+  return window.WatermarkGeometry.calculateRect(
+    watermarkSettings,
+    width,
+    height,
+    watermarkImage.naturalWidth,
+    watermarkImage.naturalHeight
+  );
+}
+
+function drawWatermark(context, image, settings, width, height) {
+  if (!image || !settings.enabled) return;
+  const rect = window.WatermarkGeometry.calculateRect(
+    settings, width, height, image.naturalWidth, image.naturalHeight
+  );
+  context.save();
+  context.globalAlpha = settings.opacity;
+  context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+  context.restore();
+}
+
+function renderWatermarkPreview() {
+  const width = activeImage.naturalWidth || 0;
+  const height = activeImage.naturalHeight || 0;
+  if (width > 0 && height > 0) {
+    watermarkCanvas.width = width;
+    watermarkCanvas.height = height;
+  }
+  const context = watermarkCanvas.getContext('2d');
+  context.clearRect(0, 0, watermarkCanvas.width, watermarkCanvas.height);
+  if (!isPreviewMode || !watermarkSettings.enabled || !watermarkImage) return;
+  drawWatermark(context, watermarkImage, watermarkSettings, watermarkCanvas.width, watermarkCanvas.height);
+}
+
+watermarkToggleBtn.addEventListener('click', () => {
+  watermarkOptions.style.display = watermarkOptions.style.display === 'flex' ? 'none' : 'flex';
+});
+
+selectWatermarkBtn.addEventListener('click', async () => {
+  if (!currentProject || !currentChapter) return;
+  watermarkStatus.textContent = 'กำลังเลือกรูป...';
+  try {
+    const result = await window.api.selectWatermark({ project: currentProject, chapter: currentChapter });
+    if (result?.canceled) { watermarkStatus.textContent = ''; return; }
+    watermarkSettings = window.WatermarkGeometry.normalizeSettings(result.settings);
+    watermarkImage = await loadImageElement(result.fileUrl);
+    watermarkStatus.textContent = 'เลือกรูปแล้ว — ลากบนภาพเพื่อวางตำแหน่ง';
+    syncWatermarkControls();
+    renderWatermarkPreview();
+  } catch (err) {
+    watermarkStatus.textContent = err.message;
+  }
+});
+
+watermarkEnabled.addEventListener('change', async () => {
+  watermarkSettings.enabled = watermarkEnabled.checked && Boolean(watermarkImage);
+  watermarkEnabled.checked = watermarkSettings.enabled;
+  renderWatermarkPreview();
+  await saveChapterWatermarkSettings();
+});
+
+watermarkOpacity.addEventListener('input', () => {
+  watermarkSettings.opacity = Number(watermarkOpacity.value) / 100;
+  watermarkOpacityVal.textContent = `${watermarkOpacity.value}%`;
+  renderWatermarkPreview();
+});
+watermarkOpacity.addEventListener('change', saveChapterWatermarkSettings);
+
+watermarkSize.addEventListener('input', () => {
+  watermarkSettings.widthRatio = Number(watermarkSize.value) / 100;
+  watermarkSizeVal.textContent = `${watermarkSize.value}%`;
+  renderWatermarkPreview();
+});
+watermarkSize.addEventListener('change', saveChapterWatermarkSettings);
+
+removeWatermarkBtn.addEventListener('click', async () => {
+  if (!currentProject || !currentChapter) return;
+  await window.api.removeWatermark({ project: currentProject, chapter: currentChapter });
+  watermarkSettings = window.WatermarkGeometry.normalizeSettings({});
+  watermarkImage = null;
+  watermarkStatus.textContent = 'ลบลายน้ำแล้ว';
+  syncWatermarkControls();
+  renderWatermarkPreview();
+});
+
+viewportContainer.addEventListener('pointerdown', (event) => {
+  if (!isPreviewMode || !watermarkSettings.enabled || !watermarkImage) return;
+  const bounds = watermarkCanvas.getBoundingClientRect();
+  const scaleX = watermarkCanvas.width / bounds.width;
+  const scaleY = watermarkCanvas.height / bounds.height;
+  const pointerX = (event.clientX - bounds.left) * scaleX;
+  const pointerY = (event.clientY - bounds.top) * scaleY;
+  const rect = getWatermarkRect(watermarkCanvas.width, watermarkCanvas.height);
+  if (!rect || pointerX < rect.x || pointerX > rect.x + rect.width || pointerY < rect.y || pointerY > rect.y + rect.height) return;
+  event.preventDefault();
+  event.stopPropagation();
+  watermarkDrag = { offsetX: pointerX - rect.x, offsetY: pointerY - rect.y, rect };
+  viewportContainer.setPointerCapture(event.pointerId);
+});
+
+viewportContainer.addEventListener('pointermove', (event) => {
+  if (!watermarkDrag) return;
+  const bounds = watermarkCanvas.getBoundingClientRect();
+  const pointerX = (event.clientX - bounds.left) * (watermarkCanvas.width / bounds.width) - watermarkDrag.offsetX;
+  const pointerY = (event.clientY - bounds.top) * (watermarkCanvas.height / bounds.height) - watermarkDrag.offsetY;
+  const position = window.WatermarkGeometry.dragToNormalized(
+    pointerX, pointerY, watermarkDrag.rect.width, watermarkDrag.rect.height,
+    watermarkCanvas.width, watermarkCanvas.height
+  );
+  watermarkSettings.x = position.x;
+  watermarkSettings.y = position.y;
+  renderWatermarkPreview();
+});
+
+viewportContainer.addEventListener('pointerup', async () => {
+  if (!watermarkDrag) return;
+  watermarkDrag = null;
+  await saveChapterWatermarkSettings();
+});
+viewportContainer.addEventListener('pointercancel', () => { watermarkDrag = null; });
 
 // 5. Select Active Page
 async function selectPage(idx) {
@@ -1872,8 +2054,10 @@ activeImage.addEventListener('load', () => {
   if (activeImage.src.startsWith('data:')) {
     initBgSampler();
     renderTypesetTextLayer(renderToken);
+    renderWatermarkPreview();
     return;
   }
+  renderWatermarkPreview();
   if (isPreviewMode && activePageTranslation.length > 0) {
     renderTypesetImage(renderToken);
   }
@@ -2573,6 +2757,10 @@ async function runExport(indicesToExport) {
         });
       }
 
+      if (watermarkSettings.enabled && watermarkImage) {
+        drawWatermark(ctx, watermarkImage, watermarkSettings, canvas.width, canvas.height);
+      }
+
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
       const saveRes = await window.api.saveTypesetImage({
         project: currentProject, chapter: currentChapter,
@@ -2836,6 +3024,7 @@ function getSVGCoords(e) {
 
 // 3. Mouse Event Listeners for Select/Add Bubble modes
 bubbleOverlay.addEventListener('mousedown', (e) => {
+  if (watermarkDrag) { e.preventDefault(); return; }
   if (currentTool === 'brush') return;
   
   const target = e.target;
