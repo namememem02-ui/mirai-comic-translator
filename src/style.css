@@ -317,6 +317,23 @@ h1, h2, h3, h4, .app-title, .btn {
   flex-shrink: 0;            /* Don't let flex shrink the zoomed container */
 }
 
+.btn-view-mode {
+  padding: 4px 9px;
+  border: 1px solid #475569;
+  border-radius: 5px;
+  background: #1e293b;
+  color: #cbd5e1;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.btn-view-mode:hover,
+.btn-view-mode.active {
+  color: #38bdf8;
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.12);
+}
+
 #activeImage {
   display: block;
   width: 100%;               /* Fill viewport-container width set by JS */
@@ -710,4 +727,3 @@ h1, h2, h3, h4, .app-title, .btn {
 .viewport-container.tool-add svg {
   cursor: crosshair !important;
 }
-

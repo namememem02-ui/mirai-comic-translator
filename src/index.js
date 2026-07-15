@@ -24,6 +24,7 @@ const translateAllBtn = document.getElementById('translateAllBtn');
 const previewToggleBtn = document.getElementById('previewToggleBtn');
 const exportChapterBtn = document.getElementById('exportChapterBtn');
 const viewportContainer = document.getElementById('viewportContainer');
+const canvasWrapper = document.querySelector('.canvas-wrapper');
 const activeImage = document.getElementById('activeImage');
 const bubbleOverlay = document.getElementById('bubbleOverlay');
 const placeholderView = document.getElementById('placeholderView');
@@ -77,6 +78,8 @@ const zoomInBtn              = document.getElementById('zoomInBtn');
 const zoomOutBtn             = document.getElementById('zoomOutBtn');
 const zoomResetBtn           = document.getElementById('zoomResetBtn');
 const zoomLevelLabel         = document.getElementById('zoomLevelLabel');
+const fitWidthBtn            = document.getElementById('fitWidthBtn');
+const fitPageBtn             = document.getElementById('fitPageBtn');
 const undoBtn                = document.getElementById('undoBtn');
 const redoBtn                = document.getElementById('redoBtn');
 const resetPageBtn           = document.getElementById('resetPageBtn');
@@ -297,14 +300,55 @@ document.addEventListener('keydown', (e) => {
 
 // Base width captured when image first loads (the "fit" width at 100%)
 let baseViewportWidth = 0;
+let viewMode = 'fit-width';
 
 function captureBaseWidth() {
-  // Called after image loads; records the natural fit width for zoom reference
-  baseViewportWidth = viewportContainer.offsetWidth || viewportContainer.clientWidth;
+  if (!activeImage.naturalWidth || !canvasWrapper) return;
+  const availableWidth = Math.max(1, canvasWrapper.clientWidth - 32);
+  baseViewportWidth = activeImage.naturalWidth * window.BubbleGeometry.calculateFitScale(
+    activeImage.naturalWidth,
+    activeImage.naturalHeight,
+    availableWidth,
+    Math.max(1, canvasWrapper.clientHeight - 32),
+    'fit-width'
+  );
+}
+
+function updateViewModeButtons() {
+  fitWidthBtn.classList.toggle('active', viewMode === 'fit-width');
+  fitPageBtn.classList.toggle('active', viewMode === 'fit-page');
+}
+
+function applyViewMode(mode) {
+  if (!activeImage.naturalWidth || !activeImage.naturalHeight || !canvasWrapper) return;
+
+  const availableWidth = Math.max(1, canvasWrapper.clientWidth - 32);
+  const availableHeight = Math.max(1, canvasWrapper.clientHeight - 32);
+  const scale = window.BubbleGeometry.calculateFitScale(
+    activeImage.naturalWidth,
+    activeImage.naturalHeight,
+    availableWidth,
+    availableHeight,
+    mode
+  );
+
+  captureBaseWidth();
+  viewMode = mode;
+  viewportContainer.style.width = `${Math.round(activeImage.naturalWidth * scale)}px`;
+  viewportContainer.style.transform = '';
+  zoomLevel = baseViewportWidth > 0
+    ? (activeImage.naturalWidth * scale) / baseViewportWidth
+    : 1;
+  zoomSlider.value = Math.max(10, Math.min(1000, Math.round(zoomLevel * 100)));
+  zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+  updateViewModeButtons();
+  requestAnimationFrame(updateSVGOverlayOnly);
 }
 
 function setZoom(level) {
   zoomLevel = Math.max(0.1, Math.min(10.0, level));
+  viewMode = 'custom';
+  updateViewModeButtons();
 
   if (baseViewportWidth > 0) {
     const targetW = Math.round(baseViewportWidth * zoomLevel);
@@ -333,18 +377,11 @@ if (zoomSlider) {
 
 // Reset button
 zoomResetBtn.addEventListener('click', () => {
-  // Reset to fit: remove explicit width so container goes back to natural CSS size
-  viewportContainer.style.width = '';
-  zoomLevel = 1.0;
-  const slider = document.getElementById('zoomSlider');
-  if (slider) slider.value = 100;
-  zoomLevelLabel.textContent = '100%';
-  // Re-capture base width after reset
-  setTimeout(() => {
-    captureBaseWidth();
-    updateSVGOverlayOnly();
-  }, 50);
+  applyViewMode('fit-width');
 });
+
+fitWidthBtn.addEventListener('click', () => applyViewMode('fit-width'));
+fitPageBtn.addEventListener('click', () => applyViewMode('fit-page'));
 
 // Ctrl + Scroll Wheel zoom
 document.querySelector('.viewport-panel').addEventListener('wheel', (e) => {
@@ -355,6 +392,12 @@ document.querySelector('.viewport-panel').addEventListener('wheel', (e) => {
   const delta = e.deltaY < 0 ? 0.1 : -0.1;
   setZoom(zoomLevel + delta);
 }, { passive: false });
+
+window.addEventListener('resize', () => {
+  if (viewMode === 'fit-width' || viewMode === 'fit-page') {
+    requestAnimationFrame(() => applyViewMode(viewMode));
+  }
+});
 
 // ==========================================================
 // Phase 5: Reset Page Translation
@@ -889,6 +932,8 @@ async function selectPage(idx) {
   // Load custom mask and paint layers when raw image is loaded
   activeImage.onload = async () => {
     if (activeImage.src.startsWith('data:')) return;
+
+    applyViewMode('fit-width');
     
     brushMaskCanvas.width = activeImage.naturalWidth || 800;
     brushMaskCanvas.height = activeImage.naturalHeight || 1200;
@@ -942,15 +987,15 @@ async function selectPage(idx) {
   activeImage.src = activePage.fileUrl;
   placeholderView.style.display = 'none';
   viewportContainer.style.display = 'block';
-  // Reset zoom on page change so each page starts at 100%
+  // Each page starts in fit-width mode; onload calculates its exact width.
   viewportContainer.style.width = '';
   viewportContainer.style.transform = '';
   zoomLevel = 1.0;
+  viewMode = 'fit-width';
+  updateViewModeButtons();
   const _zs = document.getElementById('zoomSlider');
   if (_zs) _zs.value = 100;
   zoomLevelLabel.textContent = '100%';
-  // Capture the natural fit width after image renders (use nextTick)
-  setTimeout(captureBaseWidth, 80);
 
   translatePageBtn.disabled = false;
   translateAllBtn.disabled = false;
@@ -2843,7 +2888,19 @@ window.addEventListener('mousemove', (e) => {
     updateSVGOverlayOnly();
     if (isPreviewMode) refreshTypesetView();
   } else if (isResizing) {
-    bubble.box_2d = window.BubbleGeometry.resizeBoxFromSouthEast(initialBox, dx, dy);
+    const overlayRect = bubbleOverlay.getBoundingClientRect();
+    const minimum = window.BubbleGeometry.screenPixelsToSvgUnits(
+      16,
+      overlayRect.width,
+      overlayRect.height
+    );
+    bubble.box_2d = window.BubbleGeometry.resizeBoxFromSouthEast(
+      initialBox,
+      dx,
+      dy,
+      minimum.x,
+      minimum.y
+    );
     
     updateSVGOverlayOnly();
     if (isPreviewMode) refreshTypesetView();
