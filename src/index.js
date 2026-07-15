@@ -42,8 +42,59 @@ let projectGlossary = {}; // { eng: thai }
 const cleanedBgCache = {}; // { pageName: dataUrl }
 const recentColors = ['#000000', '#ffffff', '#ef4444', '#f59e0b', '#3b82f6'];
 
-// 1. Initialize API Config
-window.api.getConfig().then((cfg) => {
+// App Settings (loaded from disk, applied globally)
+let appSettings = {
+  defaultFontSize: null,      // null = auto
+  defaultFontFamily: 'Sarabun',
+  defaultTextAlign: 'center',
+  inpaintMode: 'full'         // 'full' | 'tight'
+};
+
+// Undo / Redo stacks
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 30;
+
+// Zoom state
+let zoomLevel = 1.0;
+
+// New DOM Element References (added in Phase 5)
+const openSettingsBtn   = document.getElementById('openSettingsBtn');
+const settingsDialog    = document.getElementById('settingsDialog');
+const closeSettingsBtn  = document.getElementById('closeSettingsBtn');
+const saveSettingsBtn   = document.getElementById('saveSettingsBtn');
+const settingsSaveStatus     = document.getElementById('settingsSaveStatus');
+const settingsApiKeyInput    = document.getElementById('settingsApiKeyInput');
+const showApiKeyBtn          = document.getElementById('showApiKeyBtn');
+const saveApiKeyBtn          = document.getElementById('saveApiKeyBtn');
+const saveApiKeyStatus       = document.getElementById('saveApiKeyStatus');
+const settingsFontSizeRange  = document.getElementById('settingsFontSizeRange');
+const settingsFontSizeVal    = document.getElementById('settingsFontSizeVal');
+const settingsFontSizeAuto   = document.getElementById('settingsFontSizeAuto');
+const settingsFontFamily     = document.getElementById('settingsFontFamily');
+const settingsInpaintMode    = document.getElementById('settingsInpaintMode');
+const zoomInBtn              = document.getElementById('zoomInBtn');
+const zoomOutBtn             = document.getElementById('zoomOutBtn');
+const zoomResetBtn           = document.getElementById('zoomResetBtn');
+const zoomLevelLabel         = document.getElementById('zoomLevelLabel');
+const undoBtn                = document.getElementById('undoBtn');
+const redoBtn                = document.getElementById('redoBtn');
+const resetPageBtn           = document.getElementById('resetPageBtn');
+const stopTranslateAllBtn    = document.getElementById('stopTranslateAllBtn');
+
+// 1. Initialize API Config + App Settings
+async function initApp() {
+  // Load app settings first
+  const savedSettings = await window.api.loadAppSettings();
+  if (savedSettings && typeof savedSettings === 'object') {
+    Object.assign(appSettings, savedSettings);
+  }
+
+  // Apply settings to the Settings Dialog UI
+  applySettingsToDialog();
+
+  // Then load API config
+  const cfg = await window.api.getConfig();
   keyStatus.className = 'key-status';
   const dot = keyStatus.querySelector('.status-dot');
   const txt = keyStatus.querySelector('.status-text');
@@ -51,6 +102,8 @@ window.api.getConfig().then((cfg) => {
   if (cfg.hasKey) {
     keyStatus.classList.add('connected');
     txt.textContent = `Gemini เชื่อมต่อแล้ว (${cfg.apiKeyMasked})`;
+    // Pre-fill API key field with masked placeholder
+    settingsApiKeyInput.placeholder = `${cfg.apiKeyMasked} (กรอกใหม่เพื่อเปลี่ยน)`;
   } else {
     keyStatus.classList.add('disconnected');
     txt.textContent = 'ยังไม่ได้ตั้งค่า API Key';
@@ -62,7 +115,379 @@ window.api.getConfig().then((cfg) => {
   if (cfg.lastFolderPath) {
     loadFolder(cfg.lastFolderPath, true);
   }
+}
+
+initApp();
+
+// ==========================================================
+// Phase 5: Settings Dialog
+// ==========================================================
+
+function applySettingsToDialog() {
+  // Font Size
+  if (appSettings.defaultFontSize) {
+    settingsFontSizeAuto.checked = false;
+    settingsFontSizeRange.disabled = false;
+    settingsFontSizeRange.value = appSettings.defaultFontSize;
+    settingsFontSizeVal.textContent = `${appSettings.defaultFontSize}px`;
+  } else {
+    settingsFontSizeAuto.checked = true;
+    settingsFontSizeRange.disabled = true;
+    settingsFontSizeVal.textContent = 'ออโต้';
+  }
+  // Font Family
+  settingsFontFamily.value = appSettings.defaultFontFamily || 'Sarabun';
+  // Inpaint Mode
+  settingsInpaintMode.value = appSettings.inpaintMode || 'full';
+  // Text Align buttons
+  document.querySelectorAll('.align-btn').forEach(btn => {
+    const isActive = btn.dataset.align === (appSettings.defaultTextAlign || 'center');
+    btn.style.background = isActive ? '#3b82f6' : '#1e293b';
+    btn.style.borderColor = isActive ? '#3b82f6' : '#334155';
+    btn.style.color = isActive ? '#fff' : '#94a3b8';
+  });
+}
+
+openSettingsBtn.addEventListener('click', () => {
+  applySettingsToDialog();
+  settingsDialog.showModal();
 });
+
+closeSettingsBtn.addEventListener('click', () => settingsDialog.close());
+
+// Click backdrop to close
+settingsDialog.addEventListener('click', (e) => {
+  if (e.target === settingsDialog) settingsDialog.close();
+});
+
+// Show/hide API Key
+showApiKeyBtn.addEventListener('click', () => {
+  settingsApiKeyInput.type = settingsApiKeyInput.type === 'password' ? 'text' : 'password';
+  showApiKeyBtn.textContent = settingsApiKeyInput.type === 'password' ? '👁️' : '🔒';
+});
+
+// Save API Key only
+saveApiKeyBtn.addEventListener('click', async () => {
+  const key = settingsApiKeyInput.value.trim();
+  if (!key) {
+    saveApiKeyStatus.textContent = '⚠️ กรุณากรอก API Key';
+    saveApiKeyStatus.style.color = '#f59e0b';
+    return;
+  }
+  saveApiKeyStatus.textContent = '💾 กำลังบันทึก...';
+  const res = await window.api.saveApiKey({ apiKey: key });
+  if (res && res.success) {
+    saveApiKeyStatus.textContent = '✅ บันทึก Key แล้ว';
+    saveApiKeyStatus.style.color = '#10b981';
+    // Update header status
+    keyStatus.className = 'key-status connected';
+    keyStatus.querySelector('.status-text').textContent = `Gemini เชื่อมต่อแล้ว (${key.slice(0, 6)}…)`;
+    settingsApiKeyInput.value = '';
+    settingsApiKeyInput.placeholder = `${key.slice(0, 6)}… (กรอกใหม่เพื่อเปลี่ยน)`;
+  } else {
+    saveApiKeyStatus.textContent = '❌ บันทึกล้มเหลว';
+    saveApiKeyStatus.style.color = '#ef4444';
+  }
+  setTimeout(() => saveApiKeyStatus.textContent = '', 3000);
+});
+
+// Font Size slider in settings
+settingsFontSizeRange.addEventListener('input', (e) => {
+  settingsFontSizeVal.textContent = `${e.target.value}px`;
+});
+
+settingsFontSizeAuto.addEventListener('change', (e) => {
+  if (e.target.checked) {
+    settingsFontSizeRange.disabled = true;
+    settingsFontSizeVal.textContent = 'ออโต้';
+  } else {
+    settingsFontSizeRange.disabled = false;
+    settingsFontSizeVal.textContent = `${settingsFontSizeRange.value}px`;
+  }
+});
+
+// Alignment buttons in settings
+document.querySelectorAll('.align-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.align-btn').forEach(b => {
+      b.style.background = '#1e293b';
+      b.style.borderColor = '#334155';
+      b.style.color = '#94a3b8';
+    });
+    btn.style.background = '#3b82f6';
+    btn.style.borderColor = '#3b82f6';
+    btn.style.color = '#fff';
+    appSettings.defaultTextAlign = btn.dataset.align;
+  });
+});
+
+// Save all settings
+saveSettingsBtn.addEventListener('click', async () => {
+  appSettings.defaultFontSize = settingsFontSizeAuto.checked ? null : parseInt(settingsFontSizeRange.value);
+  appSettings.defaultFontFamily = settingsFontFamily.value;
+  appSettings.inpaintMode = settingsInpaintMode.value;
+  // defaultTextAlign already set by align-btn click
+
+  const res = await window.api.saveAppSettings(appSettings);
+  if (res && res.success) {
+    settingsSaveStatus.textContent = '✅ บันทึกแล้ว!';
+    settingsSaveStatus.style.color = '#10b981';
+    setTimeout(() => {
+      settingsSaveStatus.textContent = '';
+      settingsDialog.close();
+    }, 1200);
+  } else {
+    settingsSaveStatus.textContent = '❌ บันทึกล้มเหลว';
+    settingsSaveStatus.style.color = '#ef4444';
+  }
+});
+
+// ==========================================================
+// Phase 5: Undo / Redo
+// ==========================================================
+
+function pushUndoState() {
+  if (activePageTranslation.length === 0 && undoStack.length === 0) return;
+  undoStack.push(JSON.parse(JSON.stringify(activePageTranslation)));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+  updateUndoRedoBtns();
+}
+
+function updateUndoRedoBtns() {
+  undoBtn.disabled = undoStack.length === 0;
+  redoBtn.disabled = redoStack.length === 0;
+  undoBtn.style.opacity = undoStack.length === 0 ? '0.35' : '1';
+  redoBtn.style.opacity = redoStack.length === 0 ? '0.35' : '1';
+}
+
+function undo() {
+  if (undoStack.length === 0) return;
+  redoStack.push(JSON.parse(JSON.stringify(activePageTranslation)));
+  activePageTranslation = undoStack.pop();
+  saveCurrentPageTranslation();
+  renderPageTranslation();
+  if (isPreviewMode) refreshTypesetView();
+  updateUndoRedoBtns();
+}
+
+function redo() {
+  if (redoStack.length === 0) return;
+  undoStack.push(JSON.parse(JSON.stringify(activePageTranslation)));
+  activePageTranslation = redoStack.pop();
+  saveCurrentPageTranslation();
+  renderPageTranslation();
+  if (isPreviewMode) refreshTypesetView();
+  updateUndoRedoBtns();
+}
+
+undoBtn.addEventListener('click', undo);
+redoBtn.addEventListener('click', redo);
+
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable) return;
+  if (e.ctrlKey && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo(); }
+  if (e.ctrlKey && e.shiftKey && e.key === 'Z') { e.preventDefault(); redo(); }
+  if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+});
+
+// ==========================================================
+// Phase 5: Viewport Zoom — Slider, 10%–1000%, proper scroll
+// ==========================================================
+
+// Base width captured when image first loads (the "fit" width at 100%)
+let baseViewportWidth = 0;
+
+function captureBaseWidth() {
+  // Called after image loads; records the natural fit width for zoom reference
+  baseViewportWidth = viewportContainer.offsetWidth || viewportContainer.clientWidth;
+}
+
+function setZoom(level) {
+  zoomLevel = Math.max(0.1, Math.min(10.0, level));
+
+  if (baseViewportWidth > 0) {
+    const targetW = Math.round(baseViewportWidth * zoomLevel);
+    // Set explicit width on viewportContainer — image is width:100%, overlays are absolute 100%
+    // This makes the whole stack (image + SVG + canvases) resize together
+    viewportContainer.style.width = targetW + 'px';
+    // Remove any stale CSS transform from the old approach
+    viewportContainer.style.transform = '';
+  }
+
+  // Sync slider
+  const slider = document.getElementById('zoomSlider');
+  if (slider) slider.value = Math.round(zoomLevel * 100);
+
+  zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+}
+
+// Zoom Slider
+const zoomSlider = document.getElementById('zoomSlider');
+if (zoomSlider) {
+  zoomSlider.addEventListener('input', (e) => {
+    setZoom(parseInt(e.target.value) / 100);
+  });
+}
+
+// Reset button
+zoomResetBtn.addEventListener('click', () => {
+  // Reset to fit: remove explicit width so container goes back to natural CSS size
+  viewportContainer.style.width = '';
+  zoomLevel = 1.0;
+  const slider = document.getElementById('zoomSlider');
+  if (slider) slider.value = 100;
+  zoomLevelLabel.textContent = '100%';
+  // Re-capture base width after reset
+  setTimeout(captureBaseWidth, 50);
+});
+
+// Ctrl + Scroll Wheel zoom
+document.querySelector('.viewport-panel').addEventListener('wheel', (e) => {
+  if (!e.ctrlKey) return;
+  e.preventDefault();
+  // If we haven't captured base width yet, do it now
+  if (baseViewportWidth === 0) captureBaseWidth();
+  const delta = e.deltaY < 0 ? 0.1 : -0.1;
+  setZoom(zoomLevel + delta);
+}, { passive: false });
+
+// ==========================================================
+// Phase 5: Reset Page Translation
+// ==========================================================
+
+if (resetPageBtn) {
+  resetPageBtn.addEventListener('click', async () => {
+    const activePage = images[activeIndex];
+    if (!activePage) return;
+    if (!confirm(`ลบการแปลหน้า "${activePage.name}" ทิ้งทั้งหมดใช่หรือไม่?\nสามารถแปลหน้านี้ใหม่ได้ด้วยปุ่ม "แปลหน้านี้"`)) return;
+
+    pushUndoState();
+    await window.api.deletePageTranslation({
+      project: currentProject,
+      chapter: currentChapter,
+      pageName: activePage.name
+    });
+
+    delete cleanedBgCache[activePage.name];
+    activePageTranslation = [];
+
+    // Update thumbnail status
+    const items = thumbnailsList.querySelectorAll('.thumb-item');
+    const activeItem = items[activeIndex];
+    if (activeItem) {
+      const status = activeItem.querySelector('.thumb-status');
+      if (status) {
+        status.className = 'thumb-status';
+        status.innerHTML = '<span>⏳ ยังไม่ได้แปล</span>';
+      }
+    }
+
+    renderPlaceholder();
+    bubbleOverlay.innerHTML = '';
+    if (isPreviewMode) {
+      activeImage.src = activePage.fileUrl;
+      const typesetCanvas = document.getElementById('typesetTextCanvas');
+      if (typesetCanvas) {
+        const ctx = typesetCanvas.getContext('2d');
+        ctx.clearRect(0, 0, typesetCanvas.width, typesetCanvas.height);
+      }
+    }
+    updateUndoRedoBtns();
+  });
+}
+
+// ==========================================================
+// Phase 5 Batch B: B3 — Search / Filter Bubbles
+// ==========================================================
+
+const bubblesSearchInput = document.getElementById('bubblesSearchInput');
+const bubblesClearSearchBtn = document.getElementById('bubblesClearSearchBtn');
+
+function applyBubbleSearch(query) {
+  const q = query.trim().toLowerCase();
+  const cards = bubblesList.querySelectorAll('.bubble-card');
+  let visibleCount = 0;
+  cards.forEach(card => {
+    if (!q) {
+      card.style.display = '';
+      visibleCount++;
+      return;
+    }
+    const id = card.getAttribute('data-id');
+    const bubble = activePageTranslation.find(b => String(b.bubble_id) === id);
+    if (!bubble) { card.style.display = 'none'; return; }
+    const haystack = ((bubble.original_text || '') + ' ' + (bubble.translated_text || '')).toLowerCase();
+    if (haystack.includes(q)) {
+      card.style.display = '';
+      visibleCount++;
+    } else {
+      card.style.display = 'none';
+    }
+  });
+  // Show/hide clear button
+  if (bubblesClearSearchBtn) {
+    bubblesClearSearchBtn.style.display = q ? 'block' : 'none';
+  }
+  // Update count badge
+  const badge = document.getElementById('bubblesCountBadge');
+  if (badge) {
+    badge.textContent = q
+      ? `${visibleCount}/${activePageTranslation.length} บอลลูน`
+      : `${activePageTranslation.length} บอลลูน`;
+  }
+}
+
+if (bubblesSearchInput) {
+  bubblesSearchInput.addEventListener('input', (e) => applyBubbleSearch(e.target.value));
+}
+if (bubblesClearSearchBtn) {
+  bubblesClearSearchBtn.addEventListener('click', () => {
+    bubblesSearchInput.value = '';
+    applyBubbleSearch('');
+    bubblesSearchInput.focus();
+  });
+}
+
+// ==========================================================
+// Phase 5 Batch B: B5 — Project Stats (page progress badge)
+// ==========================================================
+
+async function updateProjectStats() {
+  if (!currentProject || !currentChapter || images.length === 0) return;
+
+  let translatedCount = 0;
+  for (const img of images) {
+    const t = await window.api.loadPageTranslation({
+      project: currentProject,
+      chapter: currentChapter,
+      pageName: img.name
+    });
+    if (t && t.length > 0) translatedCount++;
+  }
+  const total = images.length;
+  const pct = Math.round((translatedCount / total) * 100);
+
+  // Show in projectInfo header
+  const projectInfoEl = document.getElementById('projectInfo');
+  if (!projectInfoEl) return;
+
+  let statsBadge = document.getElementById('projectStatsBadge');
+  if (!statsBadge) {
+    statsBadge = document.createElement('div');
+    statsBadge.id = 'projectStatsBadge';
+    statsBadge.style.cssText = 'font-size:11px; color:#94a3b8; margin:2px 12px 4px; display:flex; align-items:center; gap:6px;';
+    projectInfoEl.after(statsBadge);
+  }
+
+  statsBadge.innerHTML = `
+    <span style="color:#38bdf8; font-weight:600;">📊 แปลแล้ว ${translatedCount}/${total} หน้า</span>
+    <div style="flex:1; height:4px; background:#1e293b; border-radius:2px; overflow:hidden;">
+      <div style="width:${pct}%; height:100%; background:linear-gradient(90deg,#3b82f6,#10b981); border-radius:2px; transition:width 0.4s;"></div>
+    </div>
+    <span style="color:#64748b;">${pct}%</span>
+  `;
+}
 
 // Collapsible Saved Projects UI Toggles
 const savedProjectsHeader = document.getElementById('savedProjectsHeader');
@@ -182,49 +607,116 @@ async function updateSavedProjectsList() {
     
     project.chapters.forEach(chap => {
       const chapRow = document.createElement('div');
-      chapRow.style.display = 'flex';
-      chapRow.style.alignItems = 'center';
-      chapRow.style.justifyContent = 'space-between';
-      chapRow.style.gap = '8px';
-      
+      chapRow.style.marginBottom = '4px';
+
+      // Chapter header row
+      const chapHeaderRow = document.createElement('div');
+      chapHeaderRow.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:6px;';
+
       const chapLink = document.createElement('div');
-      chapLink.style.cursor = 'pointer';
-      chapLink.style.color = '#38bdf8';
-      chapLink.style.textDecoration = 'underline';
-      chapLink.style.fontSize = '11px';
-      chapLink.textContent = `ตอนที่ ${chap.chapter}`;
-      
-      chapLink.addEventListener('click', (e) => {
+      chapLink.style.cssText = 'cursor:pointer; color:#38bdf8; font-size:11px; flex:1; display:flex; align-items:center; gap:4px;';
+      chapLink.innerHTML = `<span id="chapToggle_${project.name}_${chap.chapter}" style="font-size:9px; color:#64748b;">▶</span> ตอนที่ ${chap.chapter}`;
+
+      // Sub-list panel (hidden initially)
+      const subList = document.createElement('div');
+      subList.style.cssText = 'display:none; padding:4px 0 2px 14px; margin-top:3px; border-left:2px solid #334155;';
+
+      // Toggle expand / collapse
+      let expanded = false;
+      let subLoaded = false;
+
+      const toggleExpand = async (e) => {
         e.stopPropagation();
-        loadFolder(chap.folderPath);
-      });
-      
+        expanded = !expanded;
+        const icon = document.getElementById(`chapToggle_${project.name}_${chap.chapter}`);
+        if (icon) icon.textContent = expanded ? '▼' : '▶';
+
+        if (expanded) {
+          subList.style.display = 'block';
+          if (!subLoaded) {
+            subLoaded = true;
+            subList.innerHTML = '<div style="color:#64748b; font-size:10px;">⏳ กำลังโหลด...</div>';
+            const pages = await window.api.listChapterTranslations({
+              project: project.name,
+              chapter: chap.chapter
+            });
+            subList.innerHTML = '';
+
+            if (pages.length === 0) {
+              subList.innerHTML = '<div style="color:#64748b; font-size:10px;">ยังไม่มีหน้าที่แปลแล้ว</div>';
+            } else {
+              pages.forEach(pg => {
+                const pgRow = document.createElement('div');
+                pgRow.style.cssText = 'display:flex; align-items:center; gap:4px; padding:2px 0; cursor:pointer; border-radius:3px;';
+                pgRow.title = `กดเพื่อเปิด ${pg.name} (${pg.bubbleCount} บอลลูน)`;
+
+                const pgIcon = document.createElement('span');
+                pgIcon.textContent = '✅';
+                pgIcon.style.fontSize = '10px';
+
+                const pgName = document.createElement('span');
+                pgName.style.cssText = 'color:#a3e635; font-size:10px; flex:1;';
+                pgName.textContent = pg.name;
+
+                const pgCount = document.createElement('span');
+                pgCount.style.cssText = 'color:#64748b; font-size:9px;';
+                pgCount.textContent = `${pg.bubbleCount} 💬`;
+
+                pgRow.appendChild(pgIcon);
+                pgRow.appendChild(pgName);
+                pgRow.appendChild(pgCount);
+
+                pgRow.addEventListener('mouseenter', () => { pgRow.style.background = 'rgba(56,189,248,0.08)'; });
+                pgRow.addEventListener('mouseleave', () => { pgRow.style.background = ''; });
+
+                pgRow.addEventListener('click', async (e) => {
+                  e.stopPropagation();
+                  // Load the chapter if not already open
+                  await loadFolder(chap.folderPath);
+                  // Wait for images to load, then jump to matching page
+                  setTimeout(() => {
+                    const idx = images.findIndex(img =>
+                      img.name.replace(/\.[^.]+$/, '') === pg.name ||
+                      img.name === pg.name
+                    );
+                    if (idx >= 0) selectPage(idx);
+                  }, 400);
+                });
+
+                subList.appendChild(pgRow);
+              });
+            }
+          }
+        } else {
+          subList.style.display = 'none';
+        }
+      };
+
+      chapLink.addEventListener('click', toggleExpand);
+
       const deleteHistoryBtn = document.createElement('button');
-      deleteHistoryBtn.style.background = 'none';
-      deleteHistoryBtn.style.border = 'none';
-      deleteHistoryBtn.style.color = '#ef4444';
-      deleteHistoryBtn.style.fontSize = '10px';
-      deleteHistoryBtn.style.cursor = 'pointer';
-      deleteHistoryBtn.style.padding = '0 2px';
+      deleteHistoryBtn.style.cssText = 'background:none; border:none; color:#ef4444; font-size:10px; cursor:pointer; padding:0 2px;';
       deleteHistoryBtn.textContent = '✕';
       deleteHistoryBtn.title = 'ลบลิงก์โครงการนี้จากประวัติ';
-      
+
       deleteHistoryBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         if (!confirm(`ต้องการลบโครงการ "${project.name}" ตอน "${chap.chapter}" ออกจากประวัติการเปิดใช่หรือไม่?`)) return;
-        
         await window.api.deleteProjectMapping({ project: project.name, chapter: chap.chapter });
         updateSavedProjectsList();
       });
-      
-      chapRow.appendChild(chapLink);
-      chapRow.appendChild(deleteHistoryBtn);
+
+      chapHeaderRow.appendChild(chapLink);
+      chapHeaderRow.appendChild(deleteHistoryBtn);
+      chapRow.appendChild(chapHeaderRow);
+      chapRow.appendChild(subList);
       chaptersContainer.appendChild(chapRow);
     });
-    
+
     projDiv.appendChild(projTitle);
     projDiv.appendChild(chaptersContainer);
     savedProjectsList.appendChild(projDiv);
+
   });
 }
 
@@ -303,6 +795,9 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   if (images.length > 0) {
     selectPage(0);
   }
+
+  // Update project stats badge (async, non-blocking)
+  updateProjectStats();
 }
 
 // 4. Render Thumbnails
@@ -443,12 +938,34 @@ async function selectPage(idx) {
   activeImage.src = activePage.fileUrl;
   placeholderView.style.display = 'none';
   viewportContainer.style.display = 'block';
+  // Reset zoom on page change so each page starts at 100%
+  viewportContainer.style.width = '';
+  viewportContainer.style.transform = '';
+  zoomLevel = 1.0;
+  const _zs = document.getElementById('zoomSlider');
+  if (_zs) _zs.value = 100;
+  zoomLevelLabel.textContent = '100%';
+  // Capture the natural fit width after image renders (use nextTick)
+  setTimeout(captureBaseWidth, 80);
+
   translatePageBtn.disabled = false;
   translateAllBtn.disabled = false;
+  previewToggleBtn.disabled = false;
+  exportChapterBtn.disabled = false;
+  if (resetPageBtn) resetPageBtn.style.display = 'inline-flex';
+  // Clear undo/redo stacks when switching page
+  undoStack.length = 0;
+  redoStack.length = 0;
+  updateUndoRedoBtns();
 }
 
 // 6. Render Page Translation & SVG Overlays
 function renderPageTranslation() {
+  // Clear search filter when rendering a new page
+  if (bubblesSearchInput && bubblesSearchInput.value) {
+    bubblesSearchInput.value = '';
+    if (bubblesClearSearchBtn) bubblesClearSearchBtn.style.display = 'none';
+  }
   bubbleOverlay.innerHTML = '';
   bubblesList.innerHTML = '';
 
@@ -495,24 +1012,35 @@ function renderPageTranslation() {
 
       g.appendChild(rect);
 
-      // Circle handle for resizing (placed at bottom-right corner)
+      // Circle handle + crosshair for resizing (placed at bottom-right corner)
       const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
       handle.setAttribute('cx', xmax);
       handle.setAttribute('cy', ymax);
-      handle.setAttribute('r', 8);
+      handle.setAttribute('r', '14');          // larger = easier to grab
       handle.setAttribute('class', 'bubble-resize-handle');
       handle.setAttribute('data-id', bubble.bubble_id);
-      
-      if (bubble.hidden) {
-        handle.style.fill = '#ef4444';
-      } else {
-        handle.style.fill = '#a855f7';
-      }
+      handle.style.fill = bubble.hidden ? '#ef4444' : '#a855f7';
       handle.style.stroke = '#ffffff';
-      handle.style.strokeWidth = '2px';
+      handle.style.strokeWidth = '3px';
       handle.style.cursor = 'se-resize';
-      
+      handle.style.filter = 'drop-shadow(0 0 4px rgba(168,85,247,0.8))';
+
+      // Inner cross lines so handle is visible even when small on screen
+      const hLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      hLine.setAttribute('x1', xmax - 7); hLine.setAttribute('y1', ymax);
+      hLine.setAttribute('x2', xmax + 7); hLine.setAttribute('y2', ymax);
+      hLine.style.stroke = '#ffffff'; hLine.style.strokeWidth = '2.5px';
+      hLine.style.pointerEvents = 'none';
+
+      const vLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      vLine.setAttribute('x1', xmax); vLine.setAttribute('y1', ymax - 7);
+      vLine.setAttribute('x2', xmax); vLine.setAttribute('y2', ymax + 7);
+      vLine.style.stroke = '#ffffff'; vLine.style.strokeWidth = '2.5px';
+      vLine.style.pointerEvents = 'none';
+
       g.appendChild(handle);
+      g.appendChild(hLine);
+      g.appendChild(vLine);
       bubbleOverlay.appendChild(g);
     }
 
@@ -546,6 +1074,7 @@ function renderPageTranslation() {
     
     hideBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      pushUndoState();
       bubble.hidden = !bubble.hidden;
       saveCurrentPageTranslation();
       renderPageTranslation();
@@ -567,7 +1096,7 @@ function renderPageTranslation() {
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (!confirm(`คุณต้องการลบ บอลลูน #${bubble.bubble_id} นี้ถาวรใช่หรือไม่?`)) return;
-      
+      pushUndoState();
       const activePage = images[activeIndex];
       activePageTranslation = activePageTranslation.filter(b => b.bubble_id !== bubble.bubble_id);
       
@@ -601,6 +1130,7 @@ function renderPageTranslation() {
     });
 
     transInput.addEventListener('focus', () => {
+      pushUndoState(); // capture state before editing
       highlightOverlayRect(bubble.bubble_id);
       card.classList.add('active');
     });
@@ -609,6 +1139,7 @@ function renderPageTranslation() {
       unhighlightOverlayRect(bubble.bubble_id);
       card.classList.remove('active');
     });
+
 
     // 1. Font Size Override controls row (Range Slider)
     const fontRow = document.createElement('div');
@@ -877,16 +1408,96 @@ function renderPageTranslation() {
     rotateRow.appendChild(rotateSlider);
     rotateRow.appendChild(rotateValLabel);
 
+    // 4. Font Family selector row
+    const fontFamilyRow = document.createElement('div');
+    fontFamilyRow.style.cssText = 'display:flex; align-items:center; gap:6px; margin-top:6px;';
+    
+    const fontFamilyLabel = document.createElement('span');
+    fontFamilyLabel.textContent = 'ฟอนต์:';
+    fontFamilyLabel.style.cssText = 'font-size:12px; color:#94a3b8; white-space:nowrap;';
+    
+    const fontFamilySelect = document.createElement('select');
+    fontFamilySelect.style.cssText = 'flex:1; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:4px; padding:3px 6px; font-size:11px; cursor:pointer;';
+    const fontOptions = [
+      { value: 'Sarabun', label: 'Sarabun' },
+      { value: 'Prompt',  label: 'Prompt' },
+      { value: 'Kanit',   label: 'Kanit' },
+      { value: 'Mitr',    label: 'Mitr' },
+      { value: 'Noto Sans Thai', label: 'Noto Sans Thai' },
+      { value: 'Segoe UI', label: 'Segoe UI (EN)' }
+    ];
+    fontOptions.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      if ((bubble.font_family || appSettings.defaultFontFamily || 'Sarabun') === opt.value) o.selected = true;
+      fontFamilySelect.appendChild(o);
+    });
+    fontFamilySelect.addEventListener('change', (e) => {
+      pushUndoState();
+      bubble.font_family = e.target.value;
+      saveCurrentPageTranslation();
+      if (isPreviewMode) refreshTypesetView();
+    });
+    fontFamilyRow.appendChild(fontFamilyLabel);
+    fontFamilyRow.appendChild(fontFamilySelect);
+
+    // 5. Text Alignment buttons row
+    const alignRow = document.createElement('div');
+    alignRow.style.cssText = 'display:flex; align-items:center; gap:4px; margin-top:6px;';
+    
+    const alignRowLabel = document.createElement('span');
+    alignRowLabel.textContent = 'จัดข้อความ:';
+    alignRowLabel.style.cssText = 'font-size:12px; color:#94a3b8; white-space:nowrap;';
+    alignRow.appendChild(alignRowLabel);
+
+    const currentAlign = bubble.text_align || appSettings.defaultTextAlign || 'center';
+    const alignOptions = [
+      { value: 'left',   label: '⬅', title: 'ชิดซ้าย' },
+      { value: 'center', label: '≡',  title: 'กึ่งกลาง' },
+      { value: 'right',  label: '⮕', title: 'ชิดขวา' }
+    ];
+    const alignBtns = [];
+    alignOptions.forEach(opt => {
+      const btn = document.createElement('button');
+      btn.textContent = opt.label;
+      btn.title = opt.title;
+      const isActive = opt.value === currentAlign;
+      btn.style.cssText = `flex:1; background:${isActive ? '#3b82f6' : '#1e293b'}; border:1px solid ${isActive ? '#3b82f6' : '#334155'}; color:${isActive ? '#fff' : '#94a3b8'}; border-radius:4px; padding:3px 0; font-size:13px; cursor:pointer;`;
+      btn.addEventListener('click', () => {
+        pushUndoState();
+        bubble.text_align = opt.value;
+        // Update button styles
+        alignBtns.forEach((b, i) => {
+          const active = alignOptions[i].value === opt.value;
+          b.style.background = active ? '#3b82f6' : '#1e293b';
+          b.style.borderColor = active ? '#3b82f6' : '#334155';
+          b.style.color = active ? '#fff' : '#94a3b8';
+        });
+        saveCurrentPageTranslation();
+        if (isPreviewMode) refreshTypesetView();
+      });
+      alignBtns.push(btn);
+      alignRow.appendChild(btn);
+    });
+
     card.appendChild(header);
     card.appendChild(origText);
     card.appendChild(transInput);
     card.appendChild(fontRow);
     card.appendChild(colorRow);
     card.appendChild(rotateRow);
+    card.appendChild(fontFamilyRow);
+    card.appendChild(alignRow);
 
     bubblesList.appendChild(card);
   });
+
+  // Update badge count
+  const badge = document.getElementById('bubblesCountBadge');
+  if (badge) badge.textContent = `${activePageTranslation.length} บอลลูน`;
 }
+
 
 function updateSVGOverlayOnly() {
   activePageTranslation.forEach((bubble) => {
@@ -899,12 +1510,21 @@ function updateSVGOverlayOnly() {
       rect.setAttribute('height', ymax - ymin);
       
       const handle = bubbleOverlay.querySelector(`.bubble-resize-handle[data-id="${bubble.bubble_id}"]`);
+      const group = bubbleOverlay.querySelector(`.bubble-group[data-id="${bubble.bubble_id}"]`);
       if (handle) {
         handle.setAttribute('cx', xmax);
         handle.setAttribute('cy', ymax);
+        // Update crosshair lines
+        if (group) {
+          const lines = group.querySelectorAll('line');
+          if (lines.length >= 2) {
+            lines[0].setAttribute('x1', xmax - 7); lines[0].setAttribute('y1', ymax);
+            lines[0].setAttribute('x2', xmax + 7); lines[0].setAttribute('y2', ymax);
+            lines[1].setAttribute('x1', xmax); lines[1].setAttribute('y1', ymax - 7);
+            lines[1].setAttribute('x2', xmax); lines[1].setAttribute('y2', ymax + 7);
+          }
+        }
       }
-      
-      const group = bubbleOverlay.querySelector(`.bubble-group[data-id="${bubble.bubble_id}"]`);
       if (group) {
         if (bubble.rotate) {
           const cx = xmin + (xmax - xmin) / 2;
@@ -915,6 +1535,7 @@ function updateSVGOverlayOnly() {
         }
       }
     }
+
   });
 }
 
@@ -988,6 +1609,7 @@ translatePageBtn.addEventListener('click', async () => {
   if (activeIndex === -1 || !images[activeIndex]) return;
   const activePage = images[activeIndex];
 
+  pushUndoState();
   translatePageBtn.disabled = true;
   translatePageBtn.textContent = '⏳ กำลังแปลหน้าการ์ตูน...';
 
@@ -1007,6 +1629,7 @@ translatePageBtn.addEventListener('click', async () => {
     
     // Render results
     renderPageTranslation();
+    updateProjectStats();
   } catch (err) {
     alert(`การแปลล้มเหลว: ${err.message}`);
   } finally {
@@ -1015,16 +1638,22 @@ translatePageBtn.addEventListener('click', async () => {
   }
 });
 
+
 let isTranslatingAll = false;
+let cancelTranslateAll = false;
+
 translateAllBtn.addEventListener('click', async () => {
   if (isTranslatingAll) return;
   isTranslatingAll = true;
+  cancelTranslateAll = false;
   translatePageBtn.disabled = true;
   translateAllBtn.disabled = true;
+  if (stopTranslateAllBtn) stopTranslateAllBtn.style.display = 'inline-flex';
 
   try {
     let translateCount = 0;
     for (let i = 0; i < images.length; i++) {
+      if (cancelTranslateAll) break;
       const img = images[i];
       
       const existing = await window.api.loadPageTranslation({
@@ -1041,6 +1670,7 @@ translateAllBtn.addEventListener('click', async () => {
       translateAllBtn.textContent = `⏳ แปลหน้า ${i+1}/${images.length} (${img.name})...`;
       
       await selectPage(i);
+      if (cancelTranslateAll) break;
       
       const result = await window.api.translatePage({
         imagePath: img.absolutePath,
@@ -1065,20 +1695,32 @@ translateAllBtn.addEventListener('click', async () => {
       await new Promise(r => setTimeout(r, 1000));
     }
     
-    if (translateCount === 0) {
+    if (cancelTranslateAll) {
+      // silently stopped
+    } else if (translateCount === 0) {
       alert('ทุกหน้าในโฟลเดอร์นี้แปลเสร็จสมบูรณ์อยู่แล้วครับ!');
     } else {
       alert('🎉 แปลภาษาการ์ตูนทุกหน้าเสร็จสมบูรณ์เรียบร้อยแล้วครับ!');
     }
   } catch (err) {
-    alert(`การแปลแบบกลุ่มล้มเหลวระหว่างดำเนินการ: ${err.message}`);
+    if (!cancelTranslateAll) alert(`การแปลแบบกลุ่มล้มเหลวระหว่างดำเนินการ: ${err.message}`);
   } finally {
     isTranslatingAll = false;
+    cancelTranslateAll = false;
     translatePageBtn.disabled = false;
     translateAllBtn.disabled = false;
     translateAllBtn.textContent = '⚡ แปลทุกหน้าอัตโนมัติ';
+    if (stopTranslateAllBtn) stopTranslateAllBtn.style.display = 'none';
   }
 });
+
+if (stopTranslateAllBtn) {
+  stopTranslateAllBtn.addEventListener('click', () => {
+    cancelTranslateAll = true;
+    stopTranslateAllBtn.textContent = '⏳ กำลังหยุด...';
+    stopTranslateAllBtn.disabled = true;
+  });
+}
 
 // 10. Glossary Editor Management
 function renderGlossary() {
@@ -1302,7 +1944,7 @@ function renderTypesetTextLayer() {
     const bgColor = sampleImageBackgroundAt(x1, y1, w, h);
     
     if (bubble.translated_text) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate);
+      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate, bubble.font_family, bubble.text_align);
     }
   });
 }
@@ -1346,7 +1988,7 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false, overrideRotate = 0) {
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false, overrideRotate = 0, overrideFontFamily = null, overrideTextAlign = null) {
   // Check contrast of background to choose black or white text
   let textColor = overrideTextColor || '#000000';
   if (!overrideTextColor && bgColor.startsWith('#')) {
@@ -1357,8 +1999,10 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
     if (luminance < 130) textColor = '#ffffff';
   }
 
+  const fontFamily = overrideFontFamily || 'Sarabun';
+  const textAlign = overrideTextAlign || 'center';
   ctx.fillStyle = textColor;
-  ctx.textAlign = 'center';
+  ctx.textAlign = textAlign;
   ctx.textBaseline = 'middle';
   
   let fontSize;
@@ -1366,14 +2010,14 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
   
   if (overrideFontSize) {
     fontSize = overrideFontSize;
-    ctx.font = `bold ${fontSize}px 'Sarabun', 'Segoe UI', sans-serif`;
+    ctx.font = `bold ${fontSize}px '${fontFamily}', 'Segoe UI', sans-serif`;
     lines = wrapThaiText(ctx, text, w * 0.85);
   } else {
     fontSize = Math.max(14, Math.round(h * 0.18));
     if (fontSize > 40) fontSize = 40;
     
     while (fontSize >= 6) {
-      ctx.font = `bold ${fontSize}px 'Sarabun', 'Segoe UI', sans-serif`;
+      ctx.font = `bold ${fontSize}px '${fontFamily}', 'Segoe UI', sans-serif`;
       lines = wrapThaiText(ctx, text, w * 0.85);
       const totalHeight = lines.length * (fontSize * 1.25);
       if (totalHeight <= h * 0.85) {
@@ -1412,8 +2056,22 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
   
   const relativeStartY = -((lines.length - 1) * lineHeight / 2);
   
+  // Determine horizontal anchor for each alignment
+  // textAlign already set on ctx; we just need to pick lineX accordingly
+  const getLineX = (align) => {
+    if (hasRotation) {
+      if (align === 'left')  return -(w * 0.425);
+      if (align === 'right') return  (w * 0.425);
+      return 0;
+    } else {
+      if (align === 'left')  return x + w * 0.075;
+      if (align === 'right') return x + w * 0.925;
+      return cx;
+    }
+  };
+  const lineX = getLineX(textAlign);
+  
   lines.forEach((line, idx) => {
-    const lineX = hasRotation ? 0 : cx;
     const lineY = hasRotation ? (relativeStartY + idx * lineHeight) : (startY + idx * lineHeight);
     
     if (overrideOutline) {
@@ -1430,6 +2088,7 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
     ctx.restore();
   }
 }
+
 
 function wrapThaiText(ctx, text, maxWidth) {
   // Use built-in Intl.Segmenter for grammatically correct Thai word breaking
@@ -1503,7 +2162,10 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
   mctx.fillStyle = '#000000';
   mctx.fillRect(0, 0, canvasWidth, canvasHeight);
   bubbles.forEach((bubble) => {
+    // Skip manually added bubbles — no original text to erase
+    if (bubble.manualAdd) return;
     if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
+
     const [ymin, xmin, ymax, xmax] = bubble.box_2d;
     const x1 = (xmin / 1000) * canvasWidth;
     const y1 = (ymin / 1000) * canvasHeight;
@@ -1512,19 +2174,32 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
     const w = x2 - x1;
     const h = y2 - y1;
     
-    // Pad mask slightly to capture overflow text near borders
-    const padX = Math.max(8, w * 0.04);
-    const padY = Math.max(12, h * 0.08);
-    const mx1 = x1 - padX;
-    const my1 = y1 - padY;
-    const mw = w + padX * 2;
-    const mh = h + padY * 2;
+    let mx1, my1, mw, mh;
+    
+    if (appSettings.inpaintMode === 'tight') {
+      // Tight fit: shrink mask to cover only the text area (~60% width, 70% height)
+      const shrinkX = w * 0.20; // shrink 20% each side
+      const shrinkY = h * 0.15; // shrink 15% each side
+      mx1 = x1 + shrinkX;
+      my1 = y1 + shrinkY;
+      mw = w - shrinkX * 2;
+      mh = h - shrinkY * 2;
+    } else {
+      // Full box: Pad mask slightly to capture overflow text near borders
+      const padX = Math.max(8, w * 0.04);
+      const padY = Math.max(12, h * 0.08);
+      mx1 = x1 - padX;
+      my1 = y1 - padY;
+      mw = w + padX * 2;
+      mh = h + padY * 2;
+    }
     
     mctx.fillStyle = '#ffffff';
     mctx.beginPath();
-    mctx.roundRect(mx1, my1, mw, mh, Math.min(mw, mh) * 0.2);
+    mctx.roundRect(mx1, my1, Math.max(1, mw), Math.max(1, mh), Math.min(mw, mh) * 0.15);
     mctx.fill();
   });
+
   
   // Combine manual brush strokes overlay
   const brushMaskCanvas = document.getElementById('brushMaskCanvas');
@@ -1551,127 +2226,307 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
   return await res.blob();
 }
 
-exportChapterBtn.addEventListener('click', async () => {
-  exportChapterBtn.disabled = true;
-  const oldText = exportChapterBtn.textContent;
-  
+// ==========================================================
+// Export Modal System
+// ==========================================================
+
+const exportDialog      = document.getElementById('exportDialog');
+const exportModeAllBtn  = document.getElementById('exportModeAllBtn');
+const exportModeSelBtn  = document.getElementById('exportModeSelectBtn');
+const exportPanelAll    = document.getElementById('exportPanelAll');
+const exportPanelSel    = document.getElementById('exportPanelSelect');
+const exportPageList    = document.getElementById('exportPageList');
+const exportSelectedCnt = document.getElementById('exportSelectedCount');
+const exportProgress    = document.getElementById('exportProgress');
+const doExportBtn       = document.getElementById('doExportBtn');
+const doExportBtnLabel  = document.getElementById('doExportBtnLabel');
+
+let exportMode = 'all'; // 'all' | 'select'
+// Map pageName → { translated: bool }
+let exportPageMeta = {};
+
+// ------ Tab switch ------
+function switchExportMode(mode) {
+  exportMode = mode;
+  if (mode === 'all') {
+    exportModeAllBtn.style.background    = '#1e293b';
+    exportModeAllBtn.style.borderBottom  = '2px solid #3b82f6';
+    exportModeAllBtn.style.color         = '#f8fafc';
+    exportModeAllBtn.style.fontWeight    = '600';
+    exportModeSelBtn.style.background    = 'transparent';
+    exportModeSelBtn.style.borderBottom  = '2px solid transparent';
+    exportModeSelBtn.style.color         = '#64748b';
+    exportModeSelBtn.style.fontWeight    = 'normal';
+    exportPanelAll.style.display = 'block';
+    exportPanelSel.style.display = 'none';
+  } else {
+    exportModeSelBtn.style.background    = '#1e293b';
+    exportModeSelBtn.style.borderBottom  = '2px solid #3b82f6';
+    exportModeSelBtn.style.color         = '#f8fafc';
+    exportModeSelBtn.style.fontWeight    = '600';
+    exportModeAllBtn.style.background    = 'transparent';
+    exportModeAllBtn.style.borderBottom  = '2px solid transparent';
+    exportModeAllBtn.style.color         = '#64748b';
+    exportModeAllBtn.style.fontWeight    = 'normal';
+    exportPanelAll.style.display = 'none';
+    exportPanelSel.style.display = 'block';
+  }
+  updateExportButtonLabel();
+}
+exportModeAllBtn.addEventListener('click', () => switchExportMode('all'));
+exportModeSelBtn.addEventListener('click', () => switchExportMode('select'));
+
+// ------ Helpers ------
+function getCheckedIndices() {
+  return [...exportPageList.querySelectorAll('input[type=checkbox]:checked')]
+    .map(cb => parseInt(cb.value));
+}
+
+function updateExportButtonLabel() {
+  if (exportMode === 'all') {
+    doExportBtnLabel.textContent = `ส่งออกทั้งหมด (${images.length} หน้า)`;
+  } else {
+    const cnt = getCheckedIndices().length;
+    doExportBtnLabel.textContent = cnt > 0
+      ? `ส่งออก ${cnt} หน้าที่เลือก`
+      : 'กรุณาเลือกหน้า';
+    doExportBtn.disabled = cnt === 0;
+    doExportBtn.style.opacity = cnt === 0 ? '0.5' : '1';
+    exportSelectedCnt.textContent = `เลือกแล้ว ${cnt} / ${images.length} หน้า`;
+  }
+}
+
+// ------ Open Modal ------
+async function openExportDialog() {
+  if (!currentProject || images.length === 0) {
+    alert('กรุณาเปิดบทการ์ตูนก่อน');
+    return;
+  }
+
+  exportProgress.textContent = '';
+  doExportBtn.disabled = false;
+  doExportBtn.style.opacity = '1';
+  switchExportMode('all');
+
+  // Subtitle
+  document.getElementById('exportDialogSubtitle').textContent =
+    `${currentProject} — ตอน ${currentChapter}  •  ${images.length} หน้า`;
+  document.getElementById('exportAllPageCount').textContent =
+    `${images.length} หน้า (รวมทั้งที่แปลแล้วและยังไม่แปล)`;
+
+  // Build page checklist
+  exportPageList.innerHTML = '<div style="padding:8px 12px; color:#64748b; font-size:11px;">⏳ กำลังตรวจสอบสถานะ...</div>';
+  exportDialog.showModal();
+
+  // Async: load translation status per page
+  exportPageMeta = {};
+  const metaChecks = images.map(async (img, idx) => {
+    const t = await window.api.loadPageTranslation({
+      project: currentProject,
+      chapter: currentChapter,
+      pageName: img.name
+    });
+    exportPageMeta[idx] = { translated: t && t.length > 0, bubbleCount: t ? t.length : 0 };
+  });
+  await Promise.all(metaChecks);
+
+  // Build checklist rows
+  exportPageList.innerHTML = '';
+  images.forEach((img, idx) => {
+    const meta = exportPageMeta[idx] || {};
+    const row = document.createElement('label');
+    row.style.cssText = `display:flex; align-items:center; gap:10px; padding:7px 12px; cursor:pointer; border-bottom:1px solid #1e293b; transition:background 0.12s;`;
+    row.addEventListener('mouseenter', () => { row.style.background = 'rgba(56,189,248,0.06)'; });
+    row.addEventListener('mouseleave', () => { row.style.background = ''; });
+
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.value = idx;
+    cb.checked = true; // default all checked
+    cb.style.cssText = 'width:15px; height:15px; accent-color:#3b82f6; cursor:pointer; flex-shrink:0;';
+    cb.addEventListener('change', updateExportButtonLabel);
+
+    const thumb = document.createElement('img');
+    thumb.src = img.fileUrl;
+    thumb.style.cssText = 'width:32px; height:40px; object-fit:cover; border-radius:3px; border:1px solid #334155; flex-shrink:0;';
+
+    const info = document.createElement('div');
+    info.style.cssText = 'flex:1; min-width:0;';
+
+    const nameLine = document.createElement('div');
+    nameLine.style.cssText = 'font-size:12px; color:#f1f5f9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+    nameLine.textContent = `หน้า ${idx + 1} — ${img.name}`;
+
+    const statusLine = document.createElement('div');
+    statusLine.style.cssText = 'font-size:10px; margin-top:2px;';
+    if (meta.translated) {
+      statusLine.innerHTML = `<span style="color:#10b981;">✅ แปลแล้ว</span> <span style="color:#64748b;">(${meta.bubbleCount} บอลลูน)</span>`;
+    } else {
+      statusLine.innerHTML = `<span style="color:#64748b;">⬜ ยังไม่แปล</span>`;
+    }
+
+    info.appendChild(nameLine);
+    info.appendChild(statusLine);
+    row.appendChild(cb);
+    row.appendChild(thumb);
+    row.appendChild(info);
+    exportPageList.appendChild(row);
+  });
+
+  updateExportButtonLabel();
+}
+
+// Select helpers
+document.getElementById('exportSelectAllBtn').addEventListener('click', () => {
+  exportPageList.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = true; });
+  updateExportButtonLabel();
+});
+document.getElementById('exportSelectNoneBtn').addEventListener('click', () => {
+  exportPageList.querySelectorAll('input[type=checkbox]').forEach(cb => { cb.checked = false; });
+  updateExportButtonLabel();
+});
+document.getElementById('exportSelectTranslatedBtn').addEventListener('click', () => {
+  exportPageList.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    const idx = parseInt(cb.value);
+    cb.checked = !!(exportPageMeta[idx] && exportPageMeta[idx].translated);
+  });
+  updateExportButtonLabel();
+});
+
+// Close buttons
+document.getElementById('closeExportDialogBtn').addEventListener('click', () => exportDialog.close());
+document.getElementById('cancelExportDialogBtn').addEventListener('click', () => exportDialog.close());
+
+// ------ Open on button click ------
+exportChapterBtn.addEventListener('click', openExportDialog);
+
+// ------ Core Export Logic ------
+async function runExport(indicesToExport) {
+  doExportBtn.disabled = true;
+  document.getElementById('cancelExportDialogBtn').disabled = true;
+  document.getElementById('closeExportDialogBtn').disabled = true;
+
+  let exportedCount = 0;
   try {
-    let exportedCount = 0;
-    for (let i = 0; i < images.length; i++) {
+    for (let n = 0; n < indicesToExport.length; n++) {
+      const i   = indicesToExport[n];
       const imgObj = images[i];
-      exportChapterBtn.textContent = `⏳ ส่งออกหน้า ${i+1}/${images.length}...`;
-      
+      exportProgress.textContent = `⏳ ส่งออกหน้า ${n + 1}/${indicesToExport.length}: ${imgObj.name}`;
+
       const translation = await window.api.loadPageTranslation({
         project: currentProject,
         chapter: currentChapter,
         pageName: imgObj.name
       });
-      
+
       const img = new Image();
       img.src = imgObj.fileUrl;
-      await new Promise(resolve => {
-        img.onload = resolve;
-        img.onerror = resolve;
-      });
-      
+      await new Promise(resolve => { img.onload = resolve; img.onerror = resolve; });
+
       const canvas = document.createElement('canvas');
-      canvas.width = img.naturalWidth || 800;
+      canvas.width  = img.naturalWidth  || 800;
       canvas.height = img.naturalHeight || 1200;
       const ctx = canvas.getContext('2d');
-      
+
       let cleanedImg = img;
-      let tempUrl = null;
-      
+      let tempUrl    = null;
+
       if (translation && translation.length > 0) {
         try {
           const inpaintedBlob = await runAIInpaint(imgObj.fileUrl, translation, canvas.width, canvas.height);
           tempUrl = URL.createObjectURL(inpaintedBlob);
           const cleanImg = new Image();
           cleanImg.src = tempUrl;
-          await new Promise((resolve, reject) => {
-            cleanImg.onload = resolve;
-            cleanImg.onerror = reject;
-          });
+          await new Promise((resolve, reject) => { cleanImg.onload = resolve; cleanImg.onerror = reject; });
           cleanedImg = cleanImg;
         } catch (err) {
-          console.warn('[⚠️] AI Inpainting failed or offline for export. Falling back to smooth erase. Error:', err.message);
+          console.warn('[⚠️] AI Inpainting failed for export. Falling back to smooth erase.', err.message);
         }
       }
-      
+
       ctx.drawImage(cleanedImg, 0, 0);
-      
-      // Load and draw custom paint layer for export
+
+      // Custom paint layer
       try {
         const paintRes = await window.api.loadCustomPaint({
-          project: currentProject,
-          chapter: currentChapter,
-          pageName: imgObj.name
+          project: currentProject, chapter: currentChapter, pageName: imgObj.name
         });
         if (paintRes && paintRes.exists) {
           const paintImg = new Image();
           const formattedPath = paintRes.absolutePath.replace(/\\/g, '/');
           paintImg.src = `file:///${formattedPath}`;
-          await new Promise((resolve) => {
-            paintImg.onload = resolve;
-            paintImg.onerror = resolve;
-          });
+          await new Promise(resolve => { paintImg.onload = resolve; paintImg.onerror = resolve; });
           ctx.drawImage(paintImg, 0, 0);
         }
       } catch (err) {
         console.warn('[⚠️] Failed to load custom paint for export:', err);
       }
-      
+
       if (tempUrl) URL.revokeObjectURL(tempUrl);
-      
+
       if (translation && translation.length > 0) {
-        translation.forEach((bubble) => {
+        translation.forEach(bubble => {
           if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
           const [ymin, xmin, ymax, xmax] = bubble.box_2d;
           const x1 = (xmin / 1000) * canvas.width;
           const y1 = (ymin / 1000) * canvas.height;
-          const x2 = (xmax / 1000) * canvas.width;
-          const y2 = (ymax / 1000) * canvas.height;
-          const w = x2 - x1;
-          const h = y2 - y1;
-          
+          const w  = ((xmax - xmin) / 1000) * canvas.width;
+          const h  = ((ymax - ymin) / 1000) * canvas.height;
+
           if (cleanedImg === img) {
             const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
             drawSmoothErase(ctx, x1, y1, w, h, bgColor);
           }
-          
+
           const bgColorForContrast = (cleanedImg === img)
             ? sampleBubbleBackground(ctx, x1, y1, w, h)
             : '#ffffff';
-            
+
           if (bubble.translated_text && !bubble.hidden) {
-            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate);
+            drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast,
+              bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate,
+              bubble.font_family, bubble.text_align);
           }
         });
       }
-      
+
       const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      
       const saveRes = await window.api.saveTypesetImage({
-        project: currentProject,
-        chapter: currentChapter,
-        pageName: imgObj.name,
-        dataUrl: dataUrl
+        project: currentProject, chapter: currentChapter,
+        pageName: imgObj.name, dataUrl
       });
-      
-      if (saveRes.error) {
-        throw new Error(saveRes.error);
-      }
+      if (saveRes.error) throw new Error(saveRes.error);
       exportedCount++;
     }
-    
-    alert(`🎉 ส่งออกตอนสำเร็จ!\nไฟล์ทั้งหมดบันทึกแล้วในโฟลเดอร์โครงการที่:\noutput/${currentProject}/${currentChapter}/`);
+
+    exportProgress.textContent = `✅ ส่งออกสำเร็จ ${exportedCount} หน้า`;
+    setTimeout(() => {
+      exportDialog.close();
+      alert(`🎉 ส่งออกสำเร็จ!\nบันทึก ${exportedCount} หน้า ที่:\noutput/${currentProject}/${currentChapter}/`);
+    }, 800);
+
   } catch (err) {
-    alert(`การส่งออกล้มเหลว: ${err.message}`);
+    exportProgress.textContent = `❌ เกิดข้อผิดพลาด: ${err.message}`;
   } finally {
-    exportChapterBtn.disabled = false;
-    exportChapterBtn.textContent = oldText;
+    doExportBtn.disabled = false;
+    document.getElementById('cancelExportDialogBtn').disabled = false;
+    document.getElementById('closeExportDialogBtn').disabled = false;
   }
+}
+
+// Do Export button
+doExportBtn.addEventListener('click', () => {
+  const indices = exportMode === 'all'
+    ? images.map((_, i) => i)
+    : getCheckedIndices();
+
+  if (indices.length === 0) {
+    exportProgress.textContent = '⚠️ กรุณาเลือกหน้าอย่างน้อย 1 หน้า';
+    return;
+  }
+  runExport(indices);
 });
+
 
 // ==========================================================
 // Phase 3: Typesetting Studio Interactive Tools Implementation
@@ -1788,6 +2643,7 @@ if (addBubbleTextBtn) {
   addBubbleTextBtn.addEventListener('click', async () => {
     const activePage = images[activeIndex];
     if (!activePage) return;
+    pushUndoState();
     
     const newId = activePageTranslation.length > 0
       ? Math.max(...activePageTranslation.map(b => b.bubble_id)) + 1
@@ -1798,8 +2654,11 @@ if (addBubbleTextBtn) {
       box_2d: [400, 400, 600, 600],
       original_text: '(เพิ่มข้อความแมนนวล)',
       translated_text: 'กรอกบทแปลใหม่ที่นี่',
-      font_size: 18,
-      outline: true
+      font_size: appSettings.defaultFontSize || 18,
+      font_family: appSettings.defaultFontFamily || 'Sarabun',
+      text_align: appSettings.defaultTextAlign || 'center',
+      outline: true,
+      manualAdd: true  // skip AI inpaint mask for manual bubbles
     });
     
     delete cleanedBgCache[activePage.name];
@@ -2035,7 +2894,11 @@ window.addEventListener('mouseup', async () => {
           bubble_id: newId,
           box_2d: [ymin, xmin, ymax, xmax],
           original_text: '(สร้างกล่องแมนนวล)',
-          translated_text: 'กรอกคำแปลบทสนทนาใหม่ตรงนี้'
+          translated_text: 'กรอกคำแปลบทสนทนาใหม่ตรงนี้',
+          font_size: appSettings.defaultFontSize || undefined,
+          font_family: appSettings.defaultFontFamily || 'Sarabun',
+          text_align: appSettings.defaultTextAlign || 'center',
+          manualAdd: true  // skip AI inpaint mask
         });
         
         delete cleanedBgCache[activePage.name];
@@ -2056,6 +2919,7 @@ window.addEventListener('mouseup', async () => {
   activeBubbleId = null;
   initialBox = null;
   
+  pushUndoState(); // save before committing drag/resize result
   delete cleanedBgCache[activePage.name];
   await saveCurrentPageTranslation();
   renderPageTranslation();

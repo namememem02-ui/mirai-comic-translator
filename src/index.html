@@ -5,7 +5,7 @@
   <title>ComicTranslator — แปลการ์ตูนอัจฉริยะ</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Prompt:wght@300;400;600;700&family=Kanit:wght@300;400;600;700&family=Mitr:wght@300;400;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="theme-dark-sleek">
@@ -15,11 +15,14 @@
     <div class="logo-area">
       <span class="emblem">🧪</span>
       <h1 class="app-title">ComicTranslator</h1>
-      <span class="version-tag">Phase 1 MVP</span>
+      <span class="version-tag">Phase 5</span>
     </div>
-    <div id="keyStatus" class="key-status checking">
-      <span class="status-dot"></span>
-      <span class="status-text">กำลังตรวจสอบ API Key...</span>
+    <div style="display:flex; align-items:center; gap:12px;">
+      <div id="keyStatus" class="key-status checking">
+        <span class="status-dot"></span>
+        <span class="status-text">กำลังตรวจสอบ API Key...</span>
+      </div>
+      <button id="openSettingsBtn" style="background:#334155; border:1px solid #475569; color:#f8fafc; border-radius:6px; padding:5px 10px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:5px;" title="ตั้งค่าโปรแกรม">⚙️ ตั้งค่า</button>
     </div>
   </header>
 
@@ -71,12 +74,26 @@
     <section class="panel viewport-panel">
       <div class="panel-header viewport-header">
         <h2 id="activePageTitle">กรุณาเลือกหน้าการ์ตูน</h2>
-        <div class="viewport-actions" style="display: flex; gap: 8px;">
+        <div class="viewport-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <!-- Zoom Controls — Slider -->
+          <div style="display:flex; align-items:center; gap:6px; background:#1e293b; border:1px solid #334155; border-radius:6px; padding:3px 8px;">
+            <span style="font-size:11px; color:#64748b; white-space:nowrap;">🔍</span>
+            <input id="zoomSlider" type="range" min="10" max="1000" value="100" step="5"
+              style="width:90px; cursor:pointer; accent-color:#38bdf8;" title="ปรับขนาดการมองภาพ" />
+            <span id="zoomLevelLabel" style="font-size:11px; color:#38bdf8; min-width:38px; text-align:right;">100%</span>
+            <button id="zoomResetBtn" style="background:none; border:none; color:#64748b; font-size:11px; cursor:pointer; padding:0 2px;" title="รีเซตซูม">⊙</button>
+          </div>
           <button id="translatePageBtn" class="btn btn-primary" disabled>
             ⚡ แปลหน้านี้
           </button>
+          <button id="resetPageBtn" class="btn" style="font-size:12px; padding:4px 10px; background:#b45309; border:1px solid #d97706; color:#fef3c7; border-radius:4px; cursor:pointer; display:none;" title="ลบการแปลหน้านี้และแปลใหม่">
+            🔁 รีเซตหน้า
+          </button>
           <button id="translateAllBtn" class="btn btn-secondary" disabled>
             ⚡ แปลทุกหน้าอัตโนมัติ
+          </button>
+          <button id="stopTranslateAllBtn" class="btn" style="font-size:12px; padding:4px 10px; background:#dc2626; border:1px solid #ef4444; color:#fff; border-radius:4px; cursor:pointer; display:none;" title="หยุดการแปลทุกหน้า">
+            ⏹️ หยุด
           </button>
           <button id="previewToggleBtn" class="btn btn-accent" disabled>
             👁️ ดูหน้าแปลไทย
@@ -88,7 +105,11 @@
       </div>
       <!-- Studio Toolbar -->
       <div id="studioToolbar" class="studio-toolbar" style="display: none; align-items: center; justify-content: space-between; padding: 6px 12px; background: #1e293b; border-bottom: 1px solid #334155; gap: 12px;">
-        <div class="toolbar-modes" style="display: flex; gap: 6px;">
+        <div class="toolbar-modes" style="display: flex; gap: 6px; align-items:center;">
+          <!-- Undo / Redo -->
+          <button id="undoBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:4px 8px; font-size:13px; cursor:pointer;" title="ย้อนกลับ (Ctrl+Z)" disabled>↩️</button>
+          <button id="redoBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:4px 8px; font-size:13px; cursor:pointer;" title="ทำซ้ำ (Ctrl+Shift+Z)" disabled>↪️</button>
+          <div style="width:1px; height:20px; background:#334155; margin:0 2px;"></div>
           <button id="toolSelectBtn" class="btn btn-tool active" title="เครื่องมือเลือก ขยับ และยืดกล่องคำพูด" style="font-size: 12px; padding: 4px 10px; background: #334155; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; cursor: pointer;">
             🖐️ ขยับ/ยืดกล่อง
           </button>
@@ -173,9 +194,14 @@
 
       <!-- Dialogue Bubbles List Tab -->
       <div class="editor-section translation-section">
-        <div class="section-header" style="display: flex; align-items: center; justify-content: space-between;">
-          <h3>📝 รายการบทสนทนา</h3>
+        <div class="section-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap:wrap; gap:4px;">
+          <h3>📝 รายการบทสนทนา <span id="bubblesCountBadge" style="font-size:10px; background:#334155; padding:1px 6px; border-radius:10px; color:#94a3b8; font-weight:400;"></span></h3>
           <button id="addBubbleTextBtn" class="btn" style="font-size: 11px; padding: 2px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;" title="เพิ่มกล่องข้อความใหม่ที่กึ่งกลางหน้าจอ">➕ เพิ่มข้อความ</button>
+        </div>
+        <!-- Search / Filter -->
+        <div style="padding: 4px 0 6px; position:relative;">
+          <input id="bubblesSearchInput" type="text" placeholder="🔍 ค้นหาบทสนทนา..." style="width:100%; box-sizing:border-box; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:5px 28px 5px 10px; font-size:12px; outline:none; font-family:inherit;" />
+          <button id="bubblesClearSearchBtn" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; color:#64748b; cursor:pointer; font-size:13px; padding:0; line-height:1; display:none;">✕</button>
         </div>
         <div id="bubblesList" class="bubbles-list">
           <div class="no-bubbles-placeholder">
@@ -188,6 +214,148 @@
     </section>
 
   </main>
+
+  <!-- Settings Dialog Modal -->
+  <dialog id="settingsDialog" style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:0; color:#f8fafc; width:520px; max-width:95vw; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
+    <div style="padding:20px 24px; border-bottom:1px solid #1e293b; display:flex; align-items:center; justify-content:space-between;">
+      <h2 style="margin:0; font-size:16px; font-weight:700;">⚙️ ตั้งค่าโปรแกรม</h2>
+      <button id="closeSettingsBtn" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer; padding:0; line-height:1;">✕</button>
+    </div>
+    <div style="padding:20px 24px; display:flex; flex-direction:column; gap:20px; max-height:70vh; overflow-y:auto;">
+
+      <!-- API Key Section -->
+      <div>
+        <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🔑 Gemini API Key</label>
+        <div style="display:flex; gap:8px;">
+          <input id="settingsApiKeyInput" type="password" placeholder="AIza..." style="flex:1; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:8px 10px; font-size:13px; outline:none;" autocomplete="off" />
+          <button id="showApiKeyBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:6px; padding:8px 10px; font-size:12px; cursor:pointer;">👁️</button>
+        </div>
+        <div style="margin-top:6px; display:flex; gap:8px; align-items:center;">
+          <button id="saveApiKeyBtn" style="background:#3b82f6; border:none; color:#fff; border-radius:6px; padding:6px 14px; font-size:12px; cursor:pointer; font-weight:600;">💾 บันทึก API Key</button>
+          <span id="saveApiKeyStatus" style="font-size:11px; color:#64748b;"></span>
+        </div>
+        <p style="margin:6px 0 0; font-size:11px; color:#475569;">บันทึกร่วมกับ ScreenTranslator — ใช้ Key เดียวกัน</p>
+      </div>
+
+      <div style="border-top:1px solid #1e293b;"></div>
+
+      <!-- Default Font Size -->
+      <div>
+        <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">📏 ขนาดอักษรเริ่มต้น</label>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="range" id="settingsFontSizeRange" min="8" max="60" value="18" style="flex:1; cursor:pointer;" />
+          <span id="settingsFontSizeVal" style="font-size:13px; color:#38bdf8; min-width:40px;">18px</span>
+          <label style="display:flex; align-items:center; gap:4px; font-size:12px; color:#94a3b8; cursor:pointer;">
+            <input type="checkbox" id="settingsFontSizeAuto" style="cursor:pointer;"> ออโต้
+          </label>
+        </div>
+        <p style="margin:4px 0 0; font-size:11px; color:#475569;">ใช้เป็นค่าเริ่มต้นเมื่อสร้างบอลลูนใหม่</p>
+      </div>
+
+      <!-- Default Font Family -->
+      <div>
+        <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🔤 Font เริ่มต้น</label>
+        <select id="settingsFontFamily" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:8px 10px; font-size:13px; cursor:pointer;">
+          <option value="Sarabun">Sarabun (ค่าเริ่มต้น)</option>
+          <option value="Prompt">Prompt</option>
+          <option value="Kanit">Kanit</option>
+          <option value="Mitr">Mitr</option>
+          <option value="Noto Sans Thai">Noto Sans Thai</option>
+          <option value="Segoe UI">Segoe UI (ภาษาอังกฤษ)</option>
+        </select>
+      </div>
+
+      <!-- Default Text Alignment -->
+      <div>
+        <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">↔️ การจัดข้อความเริ่มต้น</label>
+        <div style="display:flex; gap:8px;">
+          <button id="settingsAlignLeft" data-align="left" class="align-btn" style="flex:1; background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:6px; padding:8px; font-size:16px; cursor:pointer;">⬅ ซ้าย</button>
+          <button id="settingsAlignCenter" data-align="center" class="align-btn" style="flex:1; background:#3b82f6; border:1px solid #3b82f6; color:#fff; border-radius:6px; padding:8px; font-size:16px; cursor:pointer;">≡ กลาง</button>
+          <button id="settingsAlignRight" data-align="right" class="align-btn" style="flex:1; background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:6px; padding:8px; font-size:16px; cursor:pointer;">⮕ ขวา</button>
+        </div>
+      </div>
+
+      <!-- Inpaint Mask Mode -->
+      <div>
+        <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🎯 โหมด AI Inpaint Mask</label>
+        <select id="settingsInpaintMode" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:8px 10px; font-size:13px; cursor:pointer;">
+          <option value="full">🔲 ทั้งกรอบบอลลูน (Full Box) — ค่าเริ่มต้น</option>
+          <option value="tight">🎯 เฉพาะตัวหนังสือ (Tight Fit) — ลบน้อยลง</option>
+        </select>
+        <p style="margin:6px 0 0; font-size:11px; color:#475569;">Tight Fit: Mask ย่อเหลือ 60%×70% ของกรอบ เพื่อไม่ลบพื้นหลังรอบข้าง</p>
+      </div>
+
+    </div>
+    <div style="padding:16px 24px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center;">
+      <span id="settingsSaveStatus" style="font-size:12px; color:#10b981;"></span>
+      <button id="saveSettingsBtn" style="background:#10b981; border:none; color:#fff; border-radius:6px; padding:8px 20px; font-size:13px; cursor:pointer; font-weight:600;">✅ บันทึกการตั้งค่า</button>
+    </div>
+  </dialog>
+
+  <!-- Export Modal Dialog -->
+  <dialog id="exportDialog" style="background:#0f172a; border:1px solid #334155; border-radius:14px; padding:0; color:#f8fafc; width:560px; max-width:96vw; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
+    <!-- Header -->
+    <div style="padding:18px 22px 14px; border-bottom:1px solid #1e293b; display:flex; align-items:center; justify-content:space-between;">
+      <div>
+        <h2 style="margin:0; font-size:16px; font-weight:700;">💾 ส่งออกการ์ตูนไทย</h2>
+        <p id="exportDialogSubtitle" style="margin:4px 0 0; font-size:11px; color:#64748b;"></p>
+      </div>
+      <button id="closeExportDialogBtn" style="background:none; border:none; color:#64748b; font-size:20px; cursor:pointer; padding:0; line-height:1;">✕</button>
+    </div>
+
+    <!-- Mode Toggle Tabs -->
+    <div style="display:flex; gap:0; border-bottom:1px solid #1e293b;">
+      <button id="exportModeAllBtn"
+        style="flex:1; padding:10px; background:#1e293b; border:none; border-bottom:2px solid #3b82f6; color:#f8fafc; font-size:13px; cursor:pointer; font-weight:600;">
+        📦 ส่งออกทั้งหมด
+      </button>
+      <button id="exportModeSelectBtn"
+        style="flex:1; padding:10px; background:transparent; border:none; border-bottom:2px solid transparent; color:#64748b; font-size:13px; cursor:pointer;">
+        ☑️ เลือกหน้าที่ต้องการ
+      </button>
+    </div>
+
+    <!-- All Pages Panel -->
+    <div id="exportPanelAll" style="padding:20px 22px;">
+      <div style="display:flex; align-items:center; gap:12px; background:#1e293b; border-radius:8px; padding:14px;">
+        <span style="font-size:32px;">📦</span>
+        <div>
+          <div style="font-weight:600; font-size:14px;">ส่งออกทุกหน้าในบทนี้</div>
+          <div id="exportAllPageCount" style="color:#64748b; font-size:12px; margin-top:3px;"></div>
+        </div>
+      </div>
+      <p style="margin:12px 0 0; font-size:11px; color:#475569; line-height:1.6;">
+        • หน้าที่แปลแล้ว → ลบอักษรต้นฉบับ + ใส่คำแปลไทย<br>
+        • หน้าที่ยังไม่แปล → ส่งออกภาพต้นฉบับ (ไม่มีการแปล)
+      </p>
+    </div>
+
+    <!-- Select Pages Panel (hidden initially) -->
+    <div id="exportPanelSelect" style="display:none; padding:14px 22px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+        <span style="font-size:12px; color:#94a3b8;">เลือกหน้าที่ต้องการส่งออก:</span>
+        <div style="display:flex; gap:6px;">
+          <button id="exportSelectAllBtn" style="background:#334155; border:1px solid #475569; color:#f8fafc; border-radius:4px; padding:3px 10px; font-size:11px; cursor:pointer;">เลือกทั้งหมด</button>
+          <button id="exportSelectNoneBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:3px 10px; font-size:11px; cursor:pointer;">ยกเลิก</button>
+          <button id="exportSelectTranslatedBtn" style="background:#065f46; border:1px solid #10b981; color:#6ee7b7; border-radius:4px; padding:3px 10px; font-size:11px; cursor:pointer;">✅ เฉพาะที่แปลแล้ว</button>
+        </div>
+      </div>
+      <!-- Page checklist -->
+      <div id="exportPageList" style="max-height:280px; overflow-y:auto; border:1px solid #1e293b; border-radius:8px; display:flex; flex-direction:column; gap:0;"></div>
+      <div id="exportSelectedCount" style="text-align:right; font-size:11px; color:#94a3b8; margin-top:6px;"></div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:14px 22px; border-top:1px solid #1e293b; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+      <div id="exportProgress" style="flex:1; font-size:12px; color:#64748b;"></div>
+      <div style="display:flex; gap:8px;">
+        <button id="cancelExportDialogBtn" style="background:#334155; border:1px solid #475569; color:#f8fafc; border-radius:6px; padding:8px 16px; font-size:13px; cursor:pointer;">ยกเลิก</button>
+        <button id="doExportBtn" style="background:linear-gradient(135deg,#10b981,#059669); border:none; color:#fff; border-radius:6px; padding:8px 22px; font-size:13px; cursor:pointer; font-weight:700; display:flex; align-items:center; gap:6px;">
+          <span>💾</span><span id="doExportBtnLabel">ส่งออกเลย</span>
+        </button>
+      </div>
+    </div>
+  </dialog>
 
   <script src="index.js"></script>
 </body>

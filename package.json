@@ -6,7 +6,8 @@
   "main": "main.js",
   "author": "suppo",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "test": "node --test"
   },
   "devDependencies": {
     "electron": "^33.0.0"

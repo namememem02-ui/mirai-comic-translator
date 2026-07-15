@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const { readJsonWithRecovery, writeJsonAtomic } = require('./lib/atomic-json');
 
 let mainWin = null;
 
@@ -20,15 +21,7 @@ if (!fs.existsSync(PROJECTS_DIR)) {
 }
 
 function loadSharedConfig() {
-  try {
-    if (fs.existsSync(SHARED_CONFIG_PATH)) {
-      const data = fs.readFileSync(SHARED_CONFIG_PATH, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (err) {
-    console.error('Error reading shared config:', err);
-  }
-  return {};
+  return readJsonWithRecovery(SHARED_CONFIG_PATH, {});
 }
 
 function createWindow() {
@@ -83,8 +76,7 @@ ipcMain.handle('get-config', () => {
   try {
     const lastProjectFile = path.join(PROJECTS_DIR, 'last_project.json');
     if (fs.existsSync(lastProjectFile)) {
-      const data = fs.readFileSync(lastProjectFile, 'utf8');
-      lastFolderPath = JSON.parse(data).lastFolderPath || '';
+      lastFolderPath = readJsonWithRecovery(lastProjectFile, {}).lastFolderPath || '';
     }
   } catch (err) {}
 
@@ -133,17 +125,17 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
 
     try {
       const lastProjectFile = path.join(PROJECTS_DIR, 'last_project.json');
-      fs.writeFileSync(lastProjectFile, JSON.stringify({ lastFolderPath: folderPath }, null, 2), 'utf8');
+      writeJsonAtomic(lastProjectFile, { lastFolderPath: folderPath });
       
       const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
       let projectsMap = {};
       if (fs.existsSync(mapFile)) {
         try {
-          projectsMap = JSON.parse(fs.readFileSync(mapFile, 'utf8') || '{}');
+          projectsMap = readJsonWithRecovery(mapFile, {});
         } catch (e) {}
       }
       projectsMap[`${project}/${chapter}`] = folderPath;
-      fs.writeFileSync(mapFile, JSON.stringify(projectsMap, null, 2), 'utf8');
+      writeJsonAtomic(mapFile, projectsMap);
     } catch (err) {
       console.error('Error writing last_project.json or projects_map.json:', err);
     }
@@ -286,7 +278,7 @@ ipcMain.handle('save-page-translation', (_e, { project, chapter, pageName, trans
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     
     const file = path.join(dir, `${path.basename(pageName, path.extname(pageName))}.json`);
-    fs.writeFileSync(file, JSON.stringify(translationData, null, 2), 'utf8');
+    writeJsonAtomic(file, translationData);
     return true;
   } catch (err) {
     return { error: err.message };
@@ -297,8 +289,7 @@ ipcMain.handle('load-page-translation', (_e, { project, chapter, pageName }) => 
   try {
     const file = path.join(PROJECTS_DIR, project, chapter, `${path.basename(pageName, path.extname(pageName))}.json`);
     if (fs.existsSync(file)) {
-      const data = fs.readFileSync(file, 'utf8');
-      return JSON.parse(data);
+      return readJsonWithRecovery(file, null);
     }
     return null;
   } catch (err) {
@@ -312,7 +303,7 @@ ipcMain.handle('save-memory', (_e, { project, memoryData }) => {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     const file = path.join(dir, 'memory.json');
-    fs.writeFileSync(file, JSON.stringify(memoryData, null, 2), 'utf8');
+    writeJsonAtomic(file, memoryData);
     return true;
   } catch (err) {
     return { error: err.message };
@@ -323,8 +314,7 @@ ipcMain.handle('load-memory', (_e, { project }) => {
   try {
     const file = path.join(PROJECTS_DIR, project, 'memory.json');
     if (fs.existsSync(file)) {
-      const data = fs.readFileSync(file, 'utf8');
-      return JSON.parse(data);
+      return readJsonWithRecovery(file, {});
     }
   } catch (err) {}
   return {};
@@ -422,8 +412,7 @@ ipcMain.handle('list-projects', () => {
   try {
     const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
     if (fs.existsSync(mapFile)) {
-      const data = fs.readFileSync(mapFile, 'utf8');
-      const projectsMap = JSON.parse(data || '{}');
+      const projectsMap = readJsonWithRecovery(mapFile, {});
       const list = [];
       const projects = {};
       for (const [key, folderPath] of Object.entries(projectsMap)) {
@@ -450,10 +439,9 @@ ipcMain.handle('delete-project-mapping', (_e, { project, chapter }) => {
   try {
     const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
     if (fs.existsSync(mapFile)) {
-      const data = fs.readFileSync(mapFile, 'utf8');
-      const projectsMap = JSON.parse(data || '{}');
+      const projectsMap = readJsonWithRecovery(mapFile, {});
       delete projectsMap[`${project}/${chapter}`];
-      fs.writeFileSync(mapFile, JSON.stringify(projectsMap, null, 2), 'utf8');
+      writeJsonAtomic(mapFile, projectsMap);
       return { success: true };
     }
   } catch (err) {
@@ -482,15 +470,97 @@ ipcMain.handle('rename-chapter', async (_e, { project, oldChapter, newChapter, f
     
     const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
     if (fs.existsSync(mapFile)) {
-      const data = fs.readFileSync(mapFile, 'utf8');
-      const projectsMap = JSON.parse(data || '{}');
+      const projectsMap = readJsonWithRecovery(mapFile, {});
       delete projectsMap[`${project}/${oldChapter}`];
       projectsMap[`${project}/${newChapter}`] = folderPath;
-      fs.writeFileSync(mapFile, JSON.stringify(projectsMap, null, 2), 'utf8');
+      writeJsonAtomic(mapFile, projectsMap);
     }
     
     return { success: true };
   } catch (err) {
     return { error: err.message };
+  }
+});
+
+// Save API Key to shared config (same location as ScreenTranslator)
+ipcMain.handle('save-api-key', (_e, { apiKey }) => {
+  try {
+    if (!fs.existsSync(SHARED_CONFIG_DIR)) {
+      fs.mkdirSync(SHARED_CONFIG_DIR, { recursive: true });
+    }
+    let cfg = {};
+    if (fs.existsSync(SHARED_CONFIG_PATH)) {
+      cfg = readJsonWithRecovery(SHARED_CONFIG_PATH, {});
+    }
+    cfg.apiKey = apiKey;
+    writeJsonAtomic(SHARED_CONFIG_PATH, cfg);
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// Save global app settings
+ipcMain.handle('save-app-settings', (_e, settings) => {
+  try {
+    const file = path.join(PROJECTS_DIR, 'app_settings.json');
+    writeJsonAtomic(file, settings);
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// Load global app settings
+ipcMain.handle('load-app-settings', () => {
+  try {
+    const file = path.join(PROJECTS_DIR, 'app_settings.json');
+    if (fs.existsSync(file)) {
+      return readJsonWithRecovery(file, {});
+    }
+  } catch (err) {}
+  return {};
+});
+
+// Delete a single page's translation JSON file
+ipcMain.handle('delete-page-translation', (_e, { project, chapter, pageName }) => {
+  try {
+    const file = path.join(PROJECTS_DIR, project, chapter, `${path.basename(pageName, path.extname(pageName))}.json`);
+    if (fs.existsSync(file)) {
+      fs.unlinkSync(file);
+    }
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// List all saved translation JSON files for a project/chapter
+ipcMain.handle('list-chapter-translations', (_e, { project, chapter }) => {
+  try {
+    const dir = path.join(PROJECTS_DIR, project, chapter);
+    if (!fs.existsSync(dir)) return [];
+    const files = fs.readdirSync(dir)
+      .filter(f => f.endsWith('.json') && !f.startsWith('_') && !f.startsWith('memory') && f !== 'glossary.json')
+      .map(f => {
+        const filePath = path.join(dir, f);
+        const stat = fs.statSync(filePath);
+        let bubbleCount = 0;
+        try {
+          const data = readJsonWithRecovery(filePath, null);
+          bubbleCount = Array.isArray(data) ? data.length : 0;
+        } catch {}
+        return {
+          name: f.replace('.json', ''),           // page name without extension
+          fileName: f,
+          modifiedAt: stat.mtimeMs,
+          bubbleCount
+        };
+      });
+    // Sort by filename (natural order)
+    files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return files;
+  } catch (err) {
+    return [];
   }
 });

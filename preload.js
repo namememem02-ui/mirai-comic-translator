@@ -18,5 +18,10 @@ contextBridge.exposeInMainWorld('api', {
   clearCustomPaint: (args) => ipcRenderer.invoke('clear-custom-paint', args),
   listProjects: () => ipcRenderer.invoke('list-projects'),
   deleteProjectMapping: (args) => ipcRenderer.invoke('delete-project-mapping', args),
-  renameChapter: (args) => ipcRenderer.invoke('rename-chapter', args)
+  renameChapter: (args) => ipcRenderer.invoke('rename-chapter', args),
+  saveApiKey: (args) => ipcRenderer.invoke('save-api-key', args),
+  saveAppSettings: (args) => ipcRenderer.invoke('save-app-settings', args),
+  loadAppSettings: () => ipcRenderer.invoke('load-app-settings'),
+  deletePageTranslation: (args) => ipcRenderer.invoke('delete-page-translation', args),
+  listChapterTranslations: (args) => ipcRenderer.invoke('list-chapter-translations', args)
 });

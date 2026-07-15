@@ -302,7 +302,7 @@ h1, h2, h3, h4, .app-title, .btn {
 .canvas-wrapper {
   flex: 1;
   display: flex;
-  align-items: center;
+  align-items: flex-start;   /* Don't center — let content start at top so scroll works */
   justify-content: center;
   padding: 16px;
   overflow: auto;
@@ -311,16 +311,16 @@ h1, h2, h3, h4, .app-title, .btn {
 
 .viewport-container {
   position: relative;
-  max-width: 100%;
-  max-height: 100%;
+  /* No max-width / max-height — zoom JS will set explicit size */
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  flex-shrink: 0;            /* Don't let flex shrink the zoomed container */
 }
 
 #activeImage {
   display: block;
-  max-width: 100%;
-  max-height: 70vh;
+  width: 100%;               /* Fill viewport-container width set by JS */
+  height: auto;              /* Preserve aspect ratio */
   object-fit: contain;
 }
 
