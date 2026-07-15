@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('api', {
   readFolder: (folderPath) => ipcRenderer.invoke('read-folder', folderPath),
   translatePage: (args) => ipcRenderer.invoke('translate-page', args),
   saveTypesetImage: (args) => ipcRenderer.invoke('save-typeset-image', args),
+  saveFacebookArchive: (args) => ipcRenderer.invoke('save-facebook-archive', args),
   savePageTranslation: (args) => ipcRenderer.invoke('save-page-translation', args),
   loadPageTranslation: (args) => ipcRenderer.invoke('load-page-translation', args),
   saveMemory: (args) => ipcRenderer.invoke('save-memory', args),
