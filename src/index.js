@@ -2768,6 +2768,7 @@ const exportProgress    = document.getElementById('exportProgress');
 const doExportBtn       = document.getElementById('doExportBtn');
 const doExportBtnLabel  = document.getElementById('doExportBtnLabel');
 const facebookExportBtn = document.getElementById('facebookExportBtn');
+const facebookArchiveName = document.getElementById('facebookArchiveName');
 
 let exportMode = 'all'; // 'all' | 'select'
 // Map pageName → { translated: bool }
@@ -2845,6 +2846,7 @@ async function openExportDialog() {
   }
 
   exportProgress.textContent = '';
+  facebookArchiveName.value = `${currentProject}-${currentChapter}-facebook`;
   doExportBtn.disabled = false;
   doExportBtn.style.opacity = '1';
   switchExportMode('all');
@@ -3003,11 +3005,8 @@ async function runFacebookExport(indicesToExport) {
       return;
     }
 
-    const archiveName = prompt('ตั้งชื่อไฟล์ ZIP ก่อนบันทึก', `${currentProject}-${currentChapter}-facebook`);
-    if (archiveName === null) {
-      exportProgress.textContent = 'ยกเลิกการส่งออก Facebook';
-      return;
-    }
+    const archiveName = facebookArchiveName.value.trim();
+    if (!archiveName) throw new Error('กรุณาตั้งชื่อไฟล์ ZIP ก่อนบันทึก');
 
     const files = [];
     let sequence = 1;
