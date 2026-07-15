@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { readJsonWithRecovery, writeJsonAtomic } = require('./lib/atomic-json');
+const { buildTranslationPrompt } = require('./lib/translation-prompt');
 
 let mainWin = null;
 
@@ -170,24 +171,7 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
   const ext = path.extname(imagePath).toLowerCase();
   const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
 
-  // Structure prompt using the memory/glossary if provided
-  let glossaryText = '';
-  if (glossary && Object.keys(glossary).length > 0) {
-    glossaryText = `Follow this character and glossary naming memory exactly:\n${JSON.stringify(glossary, null, 2)}\n\n`;
-  }
-
-  const prompt = 
-    `You are a professional manga/comic translator and layout analyst. ` +
-    `Perform OCR on this comic page, detect all speech bubbles/text panels, and translate them from English into Thai.\n\n` +
-    glossaryText +
-    `Rules:\n` +
-    `1. Keep characters' personalities, relationships, genders, and appropriate Thai pronouns consistent.\n` +
-    `2. Identify the bounding boxes of each speech bubble/text panel. Return normalized 2D boxes [ymin, xmin, ymax, xmax] in the range 0 to 1000.\n` +
-    `3. Output ONLY a valid JSON array, containing objects with keys: "bubble_id", "box_2d", "original_text", and "translated_text". Do not wrap in markdown tags like \`\`\`json.\n\n` +
-    `Example Output format:\n` +
-    `[\n` +
-    `  {"bubble_id": 1, "box_2d": [100, 200, 250, 450], "original_text": "Hello", "translated_text": "สวัสดี"}\n` +
-    `]`;
+  const prompt = buildTranslationPrompt(glossary);
 
   const models = ['gemini-2.5-flash', 'gemini-flash-lite-latest', 'gemini-1.5-flash-latest', 'gemini-1.5-pro-latest', 'gemini-2.5-pro'];
   let lastErr = null;

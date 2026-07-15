@@ -1639,6 +1639,21 @@ async function saveCurrentPageTranslation() {
   }
 }
 
+async function applyTranslationResult(result) {
+  const normalized = window.TranslationResult.normalizeTranslationResult(result);
+  const merged = window.TranslationResult.mergeDiscoveredNames(
+    projectGlossary,
+    normalized.discoveredNames
+  );
+
+  activePageTranslation = normalized.bubbles;
+  if (Object.keys(merged.added).length > 0) {
+    projectGlossary = merged.glossary;
+    await window.api.saveMemory({ project: currentProject, memoryData: projectGlossary });
+    renderGlossary();
+  }
+}
+
 // 9. Translate Page via Gemini Call
 translatePageBtn.addEventListener('click', async () => {
   if (activeIndex === -1 || !images[activeIndex]) return;
@@ -1654,7 +1669,7 @@ translatePageBtn.addEventListener('click', async () => {
       glossary: projectGlossary
     });
 
-    activePageTranslation = result;
+    await applyTranslationResult(result);
     
     // Invalidate cache since new translation might contain different bounding boxes/masks
     delete cleanedBgCache[activePage.name];
@@ -1712,7 +1727,7 @@ translateAllBtn.addEventListener('click', async () => {
         glossary: projectGlossary
       });
       
-      activePageTranslation = result;
+      await applyTranslationResult(result);
       
       // Invalidate cache for this page
       delete cleanedBgCache[img.name];
@@ -1721,7 +1736,7 @@ translateAllBtn.addEventListener('click', async () => {
         project: currentProject,
         chapter: currentChapter,
         pageName: img.name,
-        translationData: result
+        translationData: activePageTranslation
       });
       
       renderPageTranslation();
