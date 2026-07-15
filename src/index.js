@@ -69,7 +69,8 @@ let appSettings = {
   defaultFontSize: null,      // null = auto
   defaultFontFamily: 'Sarabun',
   defaultTextAlign: 'center',
-  inpaintMode: 'full'         // 'full' | 'tight'
+  inpaintMode: 'full',        // 'full' | 'tight'
+  uiScale: 115
 };
 
 // Undo / Redo stacks
@@ -95,6 +96,7 @@ const settingsFontSizeVal    = document.getElementById('settingsFontSizeVal');
 const settingsFontSizeAuto   = document.getElementById('settingsFontSizeAuto');
 const settingsFontFamily     = document.getElementById('settingsFontFamily');
 const settingsInpaintMode    = document.getElementById('settingsInpaintMode');
+const settingsUiScale        = document.getElementById('settingsUiScale');
 const zoomInBtn              = document.getElementById('zoomInBtn');
 const zoomOutBtn             = document.getElementById('zoomOutBtn');
 const zoomResetBtn           = document.getElementById('zoomResetBtn');
@@ -113,6 +115,7 @@ async function initApp() {
   if (savedSettings && typeof savedSettings === 'object') {
     Object.assign(appSettings, savedSettings);
   }
+  appSettings.uiScale = window.UiScale.applyUiScale(document.documentElement, appSettings.uiScale);
 
   // Apply settings to the Settings Dialog UI
   applySettingsToDialog();
@@ -148,6 +151,7 @@ initApp();
 // ==========================================================
 
 function applySettingsToDialog() {
+  settingsUiScale.value = String(window.UiScale.normalizeUiScale(appSettings.uiScale));
   // Font Size
   if (appSettings.defaultFontSize) {
     settingsFontSizeAuto.checked = false;
@@ -172,17 +176,35 @@ function applySettingsToDialog() {
   });
 }
 
+let savedUiScale = 115;
+let settingsSaved = false;
+
+function applyUiScale(value) {
+  appSettings.uiScale = window.UiScale.applyUiScale(document.documentElement, value);
+  requestAnimationFrame(() => {
+    if (activeIndex >= 0 && (viewMode === 'fit-width' || viewMode === 'fit-page')) applyViewMode(viewMode);
+  });
+}
+
+function restoreSavedUiScale() {
+  if (!settingsSaved) applyUiScale(savedUiScale);
+}
+
 openSettingsBtn.addEventListener('click', () => {
+  savedUiScale = window.UiScale.normalizeUiScale(appSettings.uiScale);
+  settingsSaved = false;
   applySettingsToDialog();
   settingsDialog.showModal();
 });
 
-closeSettingsBtn.addEventListener('click', () => settingsDialog.close());
+closeSettingsBtn.addEventListener('click', () => { restoreSavedUiScale(); settingsDialog.close(); });
 
 // Click backdrop to close
 settingsDialog.addEventListener('click', (e) => {
-  if (e.target === settingsDialog) settingsDialog.close();
+  if (e.target === settingsDialog) { restoreSavedUiScale(); settingsDialog.close(); }
 });
+
+settingsUiScale.addEventListener('change', () => applyUiScale(settingsUiScale.value));
 
 // Show/hide API Key
 showApiKeyBtn.addEventListener('click', () => {
@@ -250,10 +272,13 @@ saveSettingsBtn.addEventListener('click', async () => {
   appSettings.defaultFontSize = settingsFontSizeAuto.checked ? null : parseInt(settingsFontSizeRange.value);
   appSettings.defaultFontFamily = settingsFontFamily.value;
   appSettings.inpaintMode = settingsInpaintMode.value;
+  appSettings.uiScale = window.UiScale.normalizeUiScale(settingsUiScale.value);
   // defaultTextAlign already set by align-btn click
 
   const res = await window.api.saveAppSettings(appSettings);
   if (res && res.success) {
+    savedUiScale = appSettings.uiScale;
+    settingsSaved = true;
     settingsSaveStatus.textContent = '✅ บันทึกแล้ว!';
     settingsSaveStatus.style.color = '#10b981';
     setTimeout(() => {
