@@ -5,8 +5,7 @@ const os = require('os');
 const { readJsonWithRecovery, writeJsonAtomic } = require('./lib/atomic-json');
 const { buildTranslationPrompt } = require('./lib/translation-prompt');
 const { createWatermarkStore } = require('./lib/watermark-store');
-const JSZip = require('jszip');
-const { sanitizeArchiveName, validateArchiveFiles } = require('./lib/facebook-archive');
+const { sanitizeArchiveName, validateArchiveFiles, createArchiveBuffer } = require('./lib/facebook-archive');
 
 let mainWin = null;
 
@@ -283,7 +282,7 @@ ipcMain.handle('save-typeset-image', (_e, { project, chapter, pageName, dataUrl 
 
 ipcMain.handle('save-facebook-archive', async (_e, { archiveName, files }) => {
   try {
-    const validatedFiles = validateArchiveFiles(files);
+    validateArchiveFiles(files);
     const result = await dialog.showSaveDialog(mainWin, {
       title: 'บันทึกภาพสำหรับ Facebook',
       defaultPath: sanitizeArchiveName(archiveName),
@@ -291,9 +290,7 @@ ipcMain.handle('save-facebook-archive', async (_e, { archiveName, files }) => {
     });
     if (result.canceled || !result.filePath) return { canceled: true };
 
-    const zip = new JSZip();
-    for (const file of validatedFiles) zip.file(file.name, file.buffer);
-    const output = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+    const output = await createArchiveBuffer(files);
     fs.writeFileSync(result.filePath, output);
     return { success: true, absolutePath: result.filePath };
   } catch (err) {

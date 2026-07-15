@@ -4,8 +4,10 @@ const assert = require('node:assert/strict');
 const {
   sanitizeArchiveName,
   decodeJpegDataUrl,
-  validateArchiveFiles
+  validateArchiveFiles,
+  createArchiveBuffer
 } = require('../lib/facebook-archive');
+const JSZip = require('jszip');
 
 test('sanitizes a user ZIP name and adds its extension', () => {
   assert.equal(sanitizeArchiveName('ตอน 1'), 'ตอน 1.zip');
@@ -24,4 +26,16 @@ test('accepts only sequential-style JPEG filenames and non-empty lists', () => {
   assert.equal(validateArchiveFiles([{ name: '001.jpg', dataUrl: jpeg }]).length, 1);
   assert.throws(() => validateArchiveFiles([]), /at least one/);
   assert.throws(() => validateArchiveFiles([{ name: '../1.jpg', dataUrl: jpeg }]), /filename/);
+});
+
+test('creates a readable ZIP with files in the requested order', async () => {
+  const first = `data:image/jpeg;base64,${Buffer.from('first').toString('base64')}`;
+  const second = `data:image/jpeg;base64,${Buffer.from('second').toString('base64')}`;
+  const buffer = await createArchiveBuffer([
+    { name: '001.jpg', dataUrl: first },
+    { name: '002.jpg', dataUrl: second }
+  ]);
+  const zip = await JSZip.loadAsync(buffer);
+  assert.deepEqual(Object.keys(zip.files), ['001.jpg', '002.jpg']);
+  assert.equal(await zip.file('002.jpg').async('string'), 'second');
 });

@@ -2767,6 +2767,7 @@ const exportSelectedCnt = document.getElementById('exportSelectedCount');
 const exportProgress    = document.getElementById('exportProgress');
 const doExportBtn       = document.getElementById('doExportBtn');
 const doExportBtnLabel  = document.getElementById('doExportBtnLabel');
+const facebookExportBtn = document.getElementById('facebookExportBtn');
 
 let exportMode = 'all'; // 'all' | 'select'
 // Map pageName → { translated: bool }
@@ -2807,6 +2808,19 @@ exportModeSelBtn.addEventListener('click', () => switchExportMode('select'));
 function getCheckedIndices() {
   return [...exportPageList.querySelectorAll('input[type=checkbox]:checked')]
     .map(cb => parseInt(cb.value));
+}
+
+function getExportIndices() {
+  return exportMode === 'all' ? images.map((_, index) => index) : getCheckedIndices();
+}
+
+function setExportBusy(busy) {
+  doExportBtn.disabled = busy;
+  facebookExportBtn.disabled = busy;
+  document.getElementById('cancelExportDialogBtn').disabled = busy;
+  document.getElementById('closeExportDialogBtn').disabled = busy;
+  doExportBtn.style.opacity = busy ? '0.55' : '1';
+  facebookExportBtn.style.opacity = busy ? '0.55' : '1';
 }
 
 function updateExportButtonLabel() {
@@ -2928,6 +2942,109 @@ document.getElementById('cancelExportDialogBtn').addEventListener('click', () =>
 exportChapterBtn.addEventListener('click', openExportDialog);
 
 // ------ Core Export Logic ------
+async function composeExportPage(index) {
+  const imgObj = images[index];
+  if (!imgObj) throw new Error(`ไม่พบหน้าลำดับ ${index + 1}`);
+  const translation = await window.api.loadPageTranslation({
+    project: currentProject,
+    chapter: currentChapter,
+    pageName: imgObj.name
+  });
+  return composeReviewPage(imgObj, Array.isArray(translation) ? translation : []);
+}
+
+function sliceCanvasForFacebook(canvas, startSequence) {
+  const files = [];
+  const rectangles = window.FacebookExport.getSliceRects(canvas.width, canvas.height);
+  rectangles.forEach((rectangle, offset) => {
+    const slice = document.createElement('canvas');
+    slice.width = rectangle.width;
+    slice.height = rectangle.height;
+    slice.getContext('2d').drawImage(
+      canvas,
+      rectangle.x, rectangle.y, rectangle.width, rectangle.height,
+      0, 0, rectangle.width, rectangle.height
+    );
+    files.push({
+      name: window.FacebookExport.formatSliceName(startSequence + offset),
+      dataUrl: slice.toDataURL('image/jpeg', 0.95)
+    });
+    slice.width = 0;
+    slice.height = 0;
+  });
+  return files;
+}
+
+async function estimateFacebookSliceCount(indices) {
+  let count = 0;
+  for (const index of indices) {
+    const source = await loadImageElement(images[index].fileUrl);
+    count += window.FacebookExport.getSliceRects(source.naturalWidth, source.naturalHeight).length;
+  }
+  return count;
+}
+
+async function runFacebookExport(indicesToExport) {
+  if (!indicesToExport.length) {
+    exportProgress.textContent = '⚠️ กรุณาเลือกหน้าอย่างน้อย 1 หน้า';
+    return;
+  }
+
+  setExportBusy(true);
+  try {
+    exportProgress.textContent = '⏳ กำลังคำนวณจำนวนภาพ...';
+    const estimatedCount = await estimateFacebookSliceCount(indicesToExport);
+    const accepted = confirm(
+      `จะได้ประมาณ ${estimatedCount} ภาพ สัดส่วน 4:5\n` +
+      'การตัดแบบคงที่อาจตัดกลางข้อความหรือภาพ ต้องการทำต่อหรือไม่?'
+    );
+    if (!accepted) {
+      exportProgress.textContent = 'ยกเลิกการส่งออก Facebook';
+      return;
+    }
+
+    const archiveName = prompt('ตั้งชื่อไฟล์ ZIP ก่อนบันทึก', `${currentProject}-${currentChapter}-facebook`);
+    if (archiveName === null) {
+      exportProgress.textContent = 'ยกเลิกการส่งออก Facebook';
+      return;
+    }
+
+    const files = [];
+    let sequence = 1;
+    for (let position = 0; position < indicesToExport.length; position++) {
+      const index = indicesToExport[position];
+      const imgObj = images[index];
+      exportProgress.textContent = `⏳ เตรียมหน้า ${position + 1}/${indicesToExport.length}: ${imgObj.name}`;
+      try {
+        const canvas = await composeExportPage(index);
+        const pageFiles = sliceCanvasForFacebook(canvas, sequence);
+        files.push(...pageFiles);
+        sequence += pageFiles.length;
+        canvas.width = 0;
+        canvas.height = 0;
+        exportProgress.textContent = `⏳ สร้างแล้ว ${files.length}/${estimatedCount} ภาพ`;
+      } catch (err) {
+        throw new Error(`${imgObj.name}: ${err.message}`);
+      }
+    }
+
+    exportProgress.textContent = `⏳ กำลังสร้าง ZIP ${files.length} ภาพ...`;
+    const result = await window.api.saveFacebookArchive({ archiveName, files });
+    if (result?.error) throw new Error(result.error);
+    if (result?.canceled) {
+      exportProgress.textContent = 'ยกเลิกการบันทึก ZIP';
+      return;
+    }
+    exportProgress.textContent = `✅ บันทึก Facebook ZIP สำเร็จ ${files.length} ภาพ`;
+    alert(`บันทึกสำเร็จ ${files.length} ภาพ\n${result.absolutePath}`);
+  } catch (err) {
+    exportProgress.textContent = `❌ ส่งออก Facebook ไม่สำเร็จ: ${err.message}`;
+  } finally {
+    setExportBusy(false);
+    updateExportButtonLabel();
+  }
+}
+
 async function runExport(indicesToExport) {
   doExportBtn.disabled = true;
   document.getElementById('cancelExportDialogBtn').disabled = true;
@@ -3047,9 +3164,7 @@ async function runExport(indicesToExport) {
 
 // Do Export button
 doExportBtn.addEventListener('click', () => {
-  const indices = exportMode === 'all'
-    ? images.map((_, i) => i)
-    : getCheckedIndices();
+  const indices = getExportIndices();
 
   if (indices.length === 0) {
     exportProgress.textContent = '⚠️ กรุณาเลือกหน้าอย่างน้อย 1 หน้า';
@@ -3057,6 +3172,8 @@ doExportBtn.addEventListener('click', () => {
   }
   runExport(indices);
 });
+
+facebookExportBtn.addEventListener('click', () => runFacebookExport(getExportIndices()));
 
 
 // ==========================================================
