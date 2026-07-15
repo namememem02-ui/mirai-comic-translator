@@ -320,6 +320,7 @@ function setZoom(level) {
   if (slider) slider.value = Math.round(zoomLevel * 100);
 
   zoomLevelLabel.textContent = `${Math.round(zoomLevel * 100)}%`;
+  requestAnimationFrame(updateSVGOverlayOnly);
 }
 
 // Zoom Slider
@@ -339,7 +340,10 @@ zoomResetBtn.addEventListener('click', () => {
   if (slider) slider.value = 100;
   zoomLevelLabel.textContent = '100%';
   // Re-capture base width after reset
-  setTimeout(captureBaseWidth, 50);
+  setTimeout(() => {
+    captureBaseWidth();
+    updateSVGOverlayOnly();
+  }, 50);
 });
 
 // Ctrl + Scroll Wheel zoom
@@ -1012,35 +1016,26 @@ function renderPageTranslation() {
 
       g.appendChild(rect);
 
-      // Circle handle + crosshair for resizing (placed at bottom-right corner)
-      const handle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      handle.setAttribute('cx', xmax);
-      handle.setAttribute('cy', ymax);
-      handle.setAttribute('r', '14');          // larger = easier to grab
+      // Keep the resize handle square on screen even though the SVG viewBox
+      // is stretched independently on X/Y to match the page image.
+      const overlayRect = bubbleOverlay.getBoundingClientRect();
+      const handleSize = window.BubbleGeometry.screenPixelsToSvgUnits(16, overlayRect.width, overlayRect.height);
+      const handle = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      handle.setAttribute('x', xmax - handleSize.x);
+      handle.setAttribute('y', ymax - handleSize.y);
+      handle.setAttribute('width', handleSize.x);
+      handle.setAttribute('height', handleSize.y);
+      handle.setAttribute('rx', Math.min(handleSize.x, handleSize.y) * 0.18);
       handle.setAttribute('class', 'bubble-resize-handle');
       handle.setAttribute('data-id', bubble.bubble_id);
       handle.style.fill = bubble.hidden ? '#ef4444' : '#a855f7';
       handle.style.stroke = '#ffffff';
-      handle.style.strokeWidth = '3px';
+      handle.style.strokeWidth = '2px';
+      handle.style.vectorEffect = 'non-scaling-stroke';
       handle.style.cursor = 'se-resize';
       handle.style.filter = 'drop-shadow(0 0 4px rgba(168,85,247,0.8))';
 
-      // Inner cross lines so handle is visible even when small on screen
-      const hLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      hLine.setAttribute('x1', xmax - 7); hLine.setAttribute('y1', ymax);
-      hLine.setAttribute('x2', xmax + 7); hLine.setAttribute('y2', ymax);
-      hLine.style.stroke = '#ffffff'; hLine.style.strokeWidth = '2.5px';
-      hLine.style.pointerEvents = 'none';
-
-      const vLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      vLine.setAttribute('x1', xmax); vLine.setAttribute('y1', ymax - 7);
-      vLine.setAttribute('x2', xmax); vLine.setAttribute('y2', ymax + 7);
-      vLine.style.stroke = '#ffffff'; vLine.style.strokeWidth = '2.5px';
-      vLine.style.pointerEvents = 'none';
-
       g.appendChild(handle);
-      g.appendChild(hLine);
-      g.appendChild(vLine);
       bubbleOverlay.appendChild(g);
     }
 
@@ -1512,18 +1507,13 @@ function updateSVGOverlayOnly() {
       const handle = bubbleOverlay.querySelector(`.bubble-resize-handle[data-id="${bubble.bubble_id}"]`);
       const group = bubbleOverlay.querySelector(`.bubble-group[data-id="${bubble.bubble_id}"]`);
       if (handle) {
-        handle.setAttribute('cx', xmax);
-        handle.setAttribute('cy', ymax);
-        // Update crosshair lines
-        if (group) {
-          const lines = group.querySelectorAll('line');
-          if (lines.length >= 2) {
-            lines[0].setAttribute('x1', xmax - 7); lines[0].setAttribute('y1', ymax);
-            lines[0].setAttribute('x2', xmax + 7); lines[0].setAttribute('y2', ymax);
-            lines[1].setAttribute('x1', xmax); lines[1].setAttribute('y1', ymax - 7);
-            lines[1].setAttribute('x2', xmax); lines[1].setAttribute('y2', ymax + 7);
-          }
-        }
+        const overlayRect = bubbleOverlay.getBoundingClientRect();
+        const handleSize = window.BubbleGeometry.screenPixelsToSvgUnits(16, overlayRect.width, overlayRect.height);
+        handle.setAttribute('x', xmax - handleSize.x);
+        handle.setAttribute('y', ymax - handleSize.y);
+        handle.setAttribute('width', handleSize.x);
+        handle.setAttribute('height', handleSize.y);
+        handle.setAttribute('rx', Math.min(handleSize.x, handleSize.y) * 0.18);
       }
       if (group) {
         if (bubble.rotate) {
@@ -2784,6 +2774,7 @@ bubbleOverlay.addEventListener('mousedown', (e) => {
   }
   
   if (target.classList.contains('bubble-resize-handle')) {
+    e.preventDefault();
     isResizing = true;
     activeBubbleId = parseInt(target.getAttribute('data-id'));
     const bubble = activePageTranslation.find(b => b.bubble_id === activeBubbleId);
@@ -2852,12 +2843,7 @@ window.addEventListener('mousemove', (e) => {
     updateSVGOverlayOnly();
     if (isPreviewMode) refreshTypesetView();
   } else if (isResizing) {
-    const [ymin, xmin, ymax, xmax] = initialBox;
-    const newXmax = Math.max(xmin + 20, Math.min(1000, xmax + dx));
-    const newYmax = Math.max(ymin + 20, Math.min(1000, ymax + dy));
-    
-    bubble.box_2d[2] = Math.round(newYmax);
-    bubble.box_2d[3] = Math.round(newXmax);
+    bubble.box_2d = window.BubbleGeometry.resizeBoxFromSouthEast(initialBox, dx, dy);
     
     updateSVGOverlayOnly();
     if (isPreviewMode) refreshTypesetView();
