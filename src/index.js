@@ -23,6 +23,7 @@ const translatePageBtn = document.getElementById('translatePageBtn');
 const translateAllBtn = document.getElementById('translateAllBtn');
 const previewToggleBtn = document.getElementById('previewToggleBtn');
 const exportChapterBtn = document.getElementById('exportChapterBtn');
+const chapterReviewBtn = document.getElementById('chapterReviewBtn');
 const viewportContainer = document.getElementById('viewportContainer');
 const canvasWrapper = document.querySelector('.canvas-wrapper');
 const activeImage = document.getElementById('activeImage');
@@ -43,6 +44,11 @@ const watermarkSize = document.getElementById('watermarkSize');
 const watermarkSizeVal = document.getElementById('watermarkSizeVal');
 const removeWatermarkBtn = document.getElementById('removeWatermarkBtn');
 const watermarkStatus = document.getElementById('watermarkStatus');
+const chapterReviewOverlay = document.getElementById('chapterReviewOverlay');
+const chapterReviewScroll = document.getElementById('chapterReviewScroll');
+const chapterReviewColumn = document.getElementById('chapterReviewColumn');
+const reviewPageSelector = document.getElementById('reviewPageSelector');
+const chapterReviewCount = document.getElementById('chapterReviewCount');
 
 // App State
 let currentProject = '';
@@ -845,6 +851,7 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   projectInfo.style.display = 'block';
   previewToggleBtn.disabled = false;
   exportChapterBtn.disabled = false;
+  chapterReviewBtn.disabled = false;
 
   // Load Glossary memory
   projectGlossary = await window.api.loadMemory({ project: currentProject });
@@ -1200,6 +1207,7 @@ async function selectPage(idx) {
   translateAllBtn.disabled = false;
   previewToggleBtn.disabled = false;
   exportChapterBtn.disabled = false;
+  chapterReviewBtn.disabled = false;
   if (resetPageBtn) resetPageBtn.style.display = 'inline-flex';
   // Clear undo/redo stacks when switching page
   undoStack.length = 0;
@@ -2492,6 +2500,258 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
   
   return await res.blob();
 }
+
+// ==========================================================
+// Continuous Chapter Review
+// ==========================================================
+
+const reviewSession = window.ReviewController.createReviewSession();
+let reviewQueue = null;
+let reviewObserver = null;
+let reviewToken = null;
+let reviewSelected = new Set();
+let reviewTranslations = new Map();
+let reviewCache = new Map();
+let reviewSettings = window.ReviewController.normalizeReviewSettings({});
+
+async function composeReviewPage(imgObj, translation) {
+  const sourceImage = await loadImageElement(imgObj.fileUrl);
+  const canvas = document.createElement('canvas');
+  canvas.width = sourceImage.naturalWidth || 800;
+  canvas.height = sourceImage.naturalHeight || 1200;
+  const context = canvas.getContext('2d');
+  let background = sourceImage;
+  let tempUrl = null;
+
+  if (translation?.length) {
+    try {
+      const blob = await runAIInpaint(imgObj.fileUrl, translation, canvas.width, canvas.height);
+      tempUrl = URL.createObjectURL(blob);
+      background = await loadImageElement(tempUrl);
+    } catch (err) {
+      background = sourceImage;
+    }
+  }
+  context.drawImage(background, 0, 0);
+
+  try {
+    const paint = await window.api.loadCustomPaint({
+      project: currentProject, chapter: currentChapter, pageName: imgObj.name,
+    });
+    if (paint?.exists) {
+      const paintPath = paint.absolutePath.replace(/\\/g, '/');
+      const paintImage = await loadImageElement(`file:///${paintPath}`);
+      context.drawImage(paintImage, 0, 0);
+    }
+  } catch (err) {}
+
+  if (translation?.length) {
+    translation.forEach(bubble => {
+      if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
+      const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+      const x = (xmin / 1000) * canvas.width;
+      const y = (ymin / 1000) * canvas.height;
+      const width = ((xmax - xmin) / 1000) * canvas.width;
+      const height = ((ymax - ymin) / 1000) * canvas.height;
+      if (background === sourceImage) {
+        drawSmoothErase(context, x, y, width, height, sampleBubbleBackground(context, x, y, width, height));
+      }
+      if (bubble.translated_text && !bubble.hidden) {
+        drawTypesetText(
+          context, bubble.translated_text, x, y, width, height,
+          background === sourceImage ? sampleBubbleBackground(context, x, y, width, height) : '#ffffff',
+          bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate,
+          bubble.font_family, bubble.text_align
+        );
+      }
+    });
+  }
+  if (watermarkSettings.enabled && watermarkImage) {
+    drawWatermark(context, watermarkImage, watermarkSettings, canvas.width, canvas.height);
+  }
+  if (tempUrl) URL.revokeObjectURL(tempUrl);
+  return canvas;
+}
+
+function applyReviewDisplaySettings() {
+  chapterReviewColumn.dataset.width = reviewSettings.width;
+  chapterReviewColumn.classList.toggle('show-names', reviewSettings.showNames);
+  chapterReviewColumn.querySelectorAll('.review-page').forEach(page =>
+    page.classList.toggle('boundary', reviewSettings.showBoundaries));
+  document.querySelectorAll('.review-width').forEach(button =>
+    button.classList.toggle('active', button.dataset.width === reviewSettings.width));
+}
+
+function renderReviewSelector() {
+  reviewPageSelector.innerHTML = '';
+  images.forEach((image, index) => {
+    const label = document.createElement('label');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = reviewSelected.has(index);
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) reviewSelected.add(index); else reviewSelected.delete(index);
+      buildReviewPages();
+    });
+    label.append(checkbox, document.createTextNode(`${index + 1}. ${image.name}`));
+    reviewPageSelector.appendChild(label);
+  });
+}
+
+function enqueueReviewPage(pageElement) {
+  if (pageElement.dataset.status !== 'idle') return;
+  pageElement.dataset.status = 'queued';
+  const index = Number(pageElement.dataset.index);
+  const token = reviewToken;
+  reviewQueue.add(async () => {
+    if (!reviewSession.isCurrent(token)) return;
+    const cached = reviewCache.get(index);
+    let dataUrl = cached;
+    if (!dataUrl) {
+      const canvas = await composeReviewPage(images[index], reviewTranslations.get(index));
+      pageElement.style.aspectRatio = `${canvas.width} / ${canvas.height}`;
+      dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+    if (!reviewSession.isCurrent(token) || !pageElement.isConnected || pageElement.dataset.visible !== 'true') {
+      pageElement.dataset.status = 'idle';
+      return;
+    }
+    reviewCache.set(index, dataUrl);
+    const image = document.createElement('img');
+    image.src = dataUrl;
+    image.title = 'คลิกเพื่อกลับไปแก้หน้านี้';
+    image.addEventListener('click', () => openEditorPageFromReview(index));
+    pageElement.querySelector('.review-page-state').remove();
+    pageElement.appendChild(image);
+    pageElement.dataset.status = 'done';
+  }).catch(err => {
+    if (!reviewSession.isCurrent(token) || !pageElement.isConnected) return;
+    pageElement.dataset.status = 'idle';
+    const state = pageElement.querySelector('.review-page-state');
+    state.innerHTML = '';
+    const retry = document.createElement('button');
+    retry.textContent = 'โหลดไม่สำเร็จ — ลองใหม่';
+    retry.addEventListener('click', () => enqueueReviewPage(pageElement));
+    state.appendChild(retry);
+  });
+}
+
+function buildReviewPages() {
+  reviewObserver?.disconnect();
+  chapterReviewColumn.innerHTML = '';
+  const selectedIndices = [...reviewSelected].sort((a, b) => a - b);
+  chapterReviewCount.textContent = `${selectedIndices.length} / ${images.length} หน้า`;
+  selectedIndices.forEach(index => {
+    const page = document.createElement('section');
+    page.className = 'review-page';
+    page.dataset.index = index;
+    page.dataset.status = 'idle';
+    page.style.aspectRatio = '2 / 3';
+    const name = document.createElement('span');
+    name.className = 'review-page-name';
+    name.textContent = images[index].name;
+    name.addEventListener('click', () => openEditorPageFromReview(index));
+    const state = document.createElement('div');
+    state.className = 'review-page-state';
+    state.textContent = 'กำลังรอโหลด...';
+    page.append(name, state);
+    chapterReviewColumn.appendChild(page);
+  });
+  applyReviewDisplaySettings();
+  reviewObserver = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.dataset.visible = 'true';
+        enqueueReviewPage(entry.target);
+      } else {
+        entry.target.dataset.visible = 'false';
+      }
+      if (!entry.isIntersecting && entry.target.dataset.status === 'done') {
+        const index = Number(entry.target.dataset.index);
+        entry.target.querySelector('img')?.remove();
+        reviewCache.delete(index);
+        entry.target.dataset.status = 'idle';
+        const state = document.createElement('div');
+        state.className = 'review-page-state';
+        state.textContent = 'เลื่อนกลับมาเพื่อโหลด';
+        entry.target.appendChild(state);
+      }
+    });
+  }, { root: chapterReviewScroll, rootMargin: '1200px 0px' });
+  chapterReviewColumn.querySelectorAll('.review-page').forEach(page => reviewObserver.observe(page));
+  renderReviewSelector();
+}
+
+async function openChapterReview() {
+  if (!images.length) return;
+  chapterReviewOverlay.style.display = 'flex';
+  document.getElementById('chapterReviewTitle').textContent = `📖 ${currentProject} — ตอน ${currentChapter}`;
+  const token = reviewSession.begin();
+  reviewToken = token;
+  reviewQueue = window.ReviewController.createTaskQueue(2);
+  reviewSelected = new Set(images.map((_, index) => index));
+  reviewCache = new Map();
+  const translations = new Map();
+  reviewTranslations = translations;
+  await Promise.all(images.map(async (image, index) => {
+    const data = await window.api.loadPageTranslation({
+      project: currentProject, chapter: currentChapter, pageName: image.name,
+    });
+    translations.set(index, Array.isArray(data) ? data : []);
+  }));
+  if (!reviewSession.isCurrent(token)) return;
+  buildReviewPages();
+}
+
+function closeChapterReview() {
+  reviewSession.close();
+  reviewObserver?.disconnect();
+  reviewQueue?.clear();
+  reviewObserver = null;
+  reviewQueue = null;
+  reviewCache.clear();
+  chapterReviewColumn.querySelectorAll('img').forEach(image => { image.src = ''; });
+  chapterReviewColumn.innerHTML = '';
+  chapterReviewOverlay.style.display = 'none';
+}
+
+async function openEditorPageFromReview(index) {
+  closeChapterReview();
+  if (!isPreviewMode) {
+    isPreviewMode = true;
+    previewToggleBtn.textContent = '👁️ ดูภาพต้นฉบับ';
+    previewToggleBtn.classList.remove('btn-accent');
+    previewToggleBtn.classList.add('btn-secondary');
+  }
+  await selectPage(index);
+}
+
+chapterReviewBtn.addEventListener('click', openChapterReview);
+document.getElementById('closeChapterReviewBtn').addEventListener('click', closeChapterReview);
+document.getElementById('reviewSelectAll').addEventListener('click', () => {
+  reviewSelected = new Set(images.map((_, index) => index)); buildReviewPages();
+});
+document.getElementById('reviewSelectNone').addEventListener('click', () => {
+  reviewSelected = new Set(); buildReviewPages();
+});
+document.getElementById('reviewSelectTranslated').addEventListener('click', () => {
+  reviewSelected = new Set([...reviewTranslations.entries()].filter(([, value]) => value.length).map(([index]) => index));
+  buildReviewPages();
+});
+document.querySelectorAll('.review-width').forEach(button => button.addEventListener('click', () => {
+  reviewSettings.width = button.dataset.width; applyReviewDisplaySettings();
+}));
+document.getElementById('reviewShowNames').addEventListener('change', event => {
+  reviewSettings.showNames = event.target.checked; applyReviewDisplaySettings();
+});
+document.getElementById('reviewShowBoundaries').addEventListener('change', event => {
+  reviewSettings.showBoundaries = event.target.checked; applyReviewDisplaySettings();
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && chapterReviewOverlay.style.display === 'flex') closeChapterReview();
+});
 
 // ==========================================================
 // Export Modal System
