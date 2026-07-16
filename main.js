@@ -237,9 +237,9 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
         body: JSON.stringify(body)
       });
 
-      const data = await res.json().catch(() => ({}));
+      const responseData = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data?.error?.message || `HTTP ${res.status}`;
+        const msg = responseData?.error?.message || `HTTP ${res.status}`;
         if (/API key|invalid key/i.test(msg) || res.status === 403) {
           throw new Error(msg);
         }
@@ -248,7 +248,7 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
         throw e;
       }
 
-      const outputText = (data.candidates?.[0]?.content?.parts || [])
+      const outputText = (responseData.candidates?.[0]?.content?.parts || [])
         .map(p => p.text || '')
         .join('')
         .trim();

@@ -14,6 +14,7 @@ test('Gemini request logic is reusable for a full page or a tile', () => {
   assert.match(mainSource, /async function requestGeminiTranslation\(\{ data, mimeType, glossary \}\)/);
   assert.match(mainSource, /data:\s*data\.toString\(['"]base64['"]\)/);
   assert.match(mainSource, /responseMimeType:\s*['"]application\/json['"]/);
+  assert.doesNotMatch(mainSource, /const data = await res\.json/);
 });
 
 test('translate-page preserves the original path and sequences tall-page tiles', () => {
