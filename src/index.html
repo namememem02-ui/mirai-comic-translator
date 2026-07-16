@@ -184,6 +184,8 @@
           <!-- Transparent typeset text canvas overlay layer -->
           <canvas id="typesetTextCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3;"></canvas>
           <canvas id="watermarkCanvas" style="position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:4;"></canvas>
+          <textarea id="inlineTranslationEditor" class="inline-translation-editor" aria-label="แก้คำแปลบนภาพ" hidden spellcheck="false"></textarea>
+          <div id="inlineEditorStatus" class="inline-editor-status" role="status" aria-live="polite"></div>
           <!-- Custom colored paint canvas overlay layer -->
           <canvas id="colorPaintCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; opacity: 1.0; display: none; z-index: 2;"></canvas>
           <img id="activeImage" src="" alt="Manga Page" style="z-index: 1;" />
@@ -503,6 +505,7 @@
   <script src="export-quality-controller.js"></script>
   <script src="inpaint-mask-geometry.js"></script>
   <script src="copy-previous-page.js"></script>
+  <script src="inline-editor.js"></script>
   <script src="index.js"></script>
 </body>
 </html>
