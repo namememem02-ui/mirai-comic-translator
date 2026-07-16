@@ -64,3 +64,12 @@ test('Gridgeist CSS exposes tokens and responsive interaction contracts', () => 
   assert.match(css, /@media\s*\(max-width:\s*719px\)/);
   assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
 });
+
+test('secondary surfaces use the shared workbench structure', () => {
+  for (const hook of ['settings-section', 'dialog-actions', 'export-step', 'review-toolbar', 'review-page-row']) {
+    assert.match(html, new RegExp(`class=["'][^"']*${hook}`), `missing ${hook}`);
+  }
+  assert.match(css, /\.settings-surface\s*,\s*\.export-surface/);
+  assert.match(css, /\.bubble-editor-card/);
+  assert.match(css, /\.chapter-review-header\s*\{[^}]*position:\s*sticky/s);
+});

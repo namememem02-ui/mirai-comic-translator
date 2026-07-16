@@ -1160,3 +1160,131 @@ textarea:focus-visible,
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Secondary workbench surfaces */
+.settings-surface,
+.export-surface {
+  color: var(--ink) !important;
+  background: var(--surface-1) !important;
+  border: 1px solid var(--rule-strong) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 24px 72px rgba(0, 0, 0, 0.58) !important;
+}
+.settings-surface::backdrop,
+.export-surface::backdrop {
+  background: rgba(3, 5, 8, 0.8);
+}
+.settings-surface > :first-child,
+.export-surface > :first-child {
+  background: var(--surface-0);
+  border-color: var(--rule) !important;
+}
+.settings-section {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--rule);
+}
+.settings-section:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.settings-section > label {
+  color: var(--ink-strong) !important;
+  font-size: var(--ui-control-font) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+.settings-section p,
+.export-surface p { color: var(--ink-muted) !important; }
+.settings-surface input:not([type='range']),
+.settings-surface select,
+.export-surface input:not([type='range']),
+.export-surface select {
+  color: var(--ink-strong) !important;
+  background: var(--surface-2) !important;
+  border: 1px solid var(--rule-strong) !important;
+}
+.align-btn[style*='#3b82f6'] {
+  color: var(--accent) !important;
+  background: var(--accent-quiet) !important;
+  border-color: var(--accent) !important;
+}
+.dialog-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  background: var(--surface-0);
+  border-color: var(--rule) !important;
+}
+
+.export-mode-switch { background: var(--surface-0); }
+.export-mode-switch button {
+  border: 0 !important;
+  border-bottom: 2px solid transparent !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+#exportModeAllBtn {
+  color: var(--ink-strong) !important;
+  border-bottom-color: var(--accent) !important;
+}
+.export-step { border-color: var(--rule); }
+#exportPanelAll > div {
+  background: var(--surface-2) !important;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm) !important;
+}
+#exportPageList {
+  border-color: var(--rule) !important;
+  border-radius: var(--radius-sm) !important;
+  background: var(--surface-0);
+}
+.export-naming {
+  padding-block: var(--space-3) !important;
+  border-top: 1px solid var(--rule);
+}
+#facebookExportBtn {
+  color: var(--ink-strong) !important;
+  background: var(--surface-3) !important;
+  border: 1px solid var(--accent) !important;
+}
+
+.chapter-review-overlay {
+  background: var(--surface-0);
+  color: var(--ink);
+}
+.chapter-review-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  min-height: 58px;
+  height: auto;
+  background: var(--surface-0);
+  border-color: var(--rule);
+}
+.review-toolbar { padding-block: var(--space-2); }
+.chapter-review-body { background: var(--surface-0); }
+.chapter-review-selector {
+  background: var(--surface-1);
+  border-color: var(--rule);
+}
+.review-page-row label {
+  min-height: 36px;
+  border-color: var(--rule) !important;
+  color: var(--ink);
+}
+.review-page-row label:hover { background: var(--surface-2); }
+.chapter-review-scroll {
+  background-color: var(--surface-0);
+  background-image:
+    linear-gradient(var(--rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--rule) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.chapter-review-column { border-inline: 1px solid var(--rule); }
+.review-page { background: var(--surface-1); }
+
+@media (max-width: 719px) {
+  .export-naming { align-items: stretch !important; flex-direction: column; }
+  .dialog-actions { align-items: stretch !important; flex-direction: column; }
+  .dialog-actions > div { display: grid !important; grid-template-columns: 1fr; }
+  .chapter-review-header { align-items: flex-start; flex-direction: column; padding-block: var(--space-3); }
+  .chapter-review-body { flex-direction: column; }
+  .chapter-review-selector { width: 100%; max-height: 34vh; border-right: 0; border-bottom: 1px solid var(--rule); }
+}
