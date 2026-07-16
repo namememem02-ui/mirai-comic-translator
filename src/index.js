@@ -2794,6 +2794,7 @@ const doExportBtn       = document.getElementById('doExportBtn');
 const doExportBtnLabel  = document.getElementById('doExportBtnLabel');
 const facebookExportBtn = document.getElementById('facebookExportBtn');
 const facebookArchiveName = document.getElementById('facebookArchiveName');
+const facebookMaxImages = document.getElementById('facebookMaxImages');
 
 let exportMode = 'all'; // 'all' | 'select'
 // Map pageName → { translated: bool }
@@ -2980,9 +2981,8 @@ async function composeExportPage(index) {
   return composeReviewPage(imgObj, Array.isArray(translation) ? translation : []);
 }
 
-function sliceCanvasForFacebook(canvas, startSequence) {
+function sliceCanvasForFacebook(canvas, startSequence, rectangles) {
   const files = [];
-  const rectangles = window.FacebookExport.getSliceRects(canvas.width, canvas.height);
   rectangles.forEach((rectangle, offset) => {
     const slice = document.createElement('canvas');
     slice.width = rectangle.width;
@@ -3002,13 +3002,17 @@ function sliceCanvasForFacebook(canvas, startSequence) {
   return files;
 }
 
-async function estimateFacebookSliceCount(indices) {
-  let count = 0;
+async function buildFacebookSlicePlan(indices, maximum) {
+  const dimensions = [];
   for (const index of indices) {
     const source = await loadImageElement(images[index].fileUrl);
-    count += window.FacebookExport.getSliceRects(source.naturalWidth, source.naturalHeight).length;
+    dimensions.push({ index, width: source.naturalWidth, height: source.naturalHeight });
   }
-  return count;
+  const counts = window.FacebookExport.allocateSliceCounts(dimensions.map(item => item.height), maximum);
+  return dimensions.map((item, position) => ({
+    index: item.index,
+    rectangles: window.FacebookExport.getEqualSliceRects(item.width, item.height, counts[position])
+  }));
 }
 
 async function runFacebookExport(indicesToExport) {
@@ -3020,9 +3024,10 @@ async function runFacebookExport(indicesToExport) {
   setExportBusy(true);
   try {
     exportProgress.textContent = '⏳ กำลังคำนวณจำนวนภาพ...';
-    const estimatedCount = await estimateFacebookSliceCount(indicesToExport);
+    const slicePlan = await buildFacebookSlicePlan(indicesToExport, Number(facebookMaxImages.value));
+    const estimatedCount = slicePlan.reduce((sum, item) => sum + item.rectangles.length, 0);
     const accepted = confirm(
-      `จะได้ประมาณ ${estimatedCount} ภาพ สัดส่วน 4:5\n` +
+      `จะได้ ${estimatedCount} ภาพ กระจายตามความยาวของแต่ละหน้า\n` +
       'การตัดแบบคงที่อาจตัดกลางข้อความหรือภาพ ต้องการทำต่อหรือไม่?'
     );
     if (!accepted) {
@@ -3036,12 +3041,12 @@ async function runFacebookExport(indicesToExport) {
     const files = [];
     let sequence = 1;
     for (let position = 0; position < indicesToExport.length; position++) {
-      const index = indicesToExport[position];
+      const index = slicePlan[position].index;
       const imgObj = images[index];
       exportProgress.textContent = `⏳ เตรียมหน้า ${position + 1}/${indicesToExport.length}: ${imgObj.name}`;
       try {
         const canvas = await composeExportPage(index);
-        const pageFiles = sliceCanvasForFacebook(canvas, sequence);
+        const pageFiles = sliceCanvasForFacebook(canvas, sequence, slicePlan[position].rectangles);
         files.push(...pageFiles);
         sequence += pageFiles.length;
         canvas.width = 0;
