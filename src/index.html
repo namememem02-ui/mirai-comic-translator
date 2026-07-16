@@ -27,10 +27,10 @@
   </header>
 
   <!-- Main Workspace -->
-  <main class="workspace">
+  <main class="workspace workspace-shell">
 
     <!-- Column 1: Explorer Sidebar (Left) -->
-    <section class="panel explorer-panel">
+    <section class="panel explorer-panel page-rail">
       <div class="panel-header">
         <h2>คลังหน้าการ์ตูน</h2>
       </div>
@@ -71,7 +71,7 @@
     </section>
 
     <!-- Column 2: Viewport Center -->
-    <section class="panel viewport-panel">
+    <section class="panel viewport-panel canvas-stage">
       <div class="panel-header viewport-header">
         <h2 id="activePageTitle">กรุณาเลือกหน้าการ์ตูน</h2>
         <div class="viewport-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
@@ -188,7 +188,7 @@
     </section>
 
     <!-- Column 3: Editor Sidebar (Right) -->
-    <section class="panel editor-panel">
+    <section class="panel editor-panel context-inspector">
       
       <!-- Glossary / Memory Tab -->
       <div class="editor-section glossary-section">
@@ -230,7 +230,7 @@
 
   </main>
 
-  <div id="chapterReviewOverlay" class="chapter-review-overlay" style="display:none;">
+  <div id="chapterReviewOverlay" class="chapter-review-overlay review-workspace" style="display:none;">
     <header class="chapter-review-header">
       <div><strong id="chapterReviewTitle">รีวิวรวม</strong><span id="chapterReviewCount"></span></div>
       <div class="chapter-review-controls">
@@ -259,7 +259,7 @@
   </div>
 
   <!-- Settings Dialog Modal -->
-  <dialog id="settingsDialog" style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:0; color:#f8fafc; width:520px; max-width:95vw; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
+  <dialog id="settingsDialog" class="settings-surface" style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:0; color:#f8fafc; width:520px; max-width:95vw; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
     <div style="padding:20px 24px; border-bottom:1px solid #1e293b; display:flex; align-items:center; justify-content:space-between;">
       <h2 style="margin:0; font-size:16px; font-weight:700;">⚙️ ตั้งค่าโปรแกรม</h2>
       <button id="closeSettingsBtn" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer; padding:0; line-height:1;">✕</button>
@@ -348,7 +348,7 @@
   </dialog>
 
   <!-- Export Modal Dialog -->
-  <dialog id="exportDialog" style="background:#0f172a; border:1px solid #334155; border-radius:14px; padding:0; color:#f8fafc; width:560px; max-width:96vw; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
+  <dialog id="exportDialog" class="export-surface" style="background:#0f172a; border:1px solid #334155; border-radius:14px; padding:0; color:#f8fafc; width:560px; max-width:96vw; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
     <!-- Header -->
     <div style="padding:18px 22px 14px; border-bottom:1px solid #1e293b; display:flex; align-items:center; justify-content:space-between;">
       <div>
