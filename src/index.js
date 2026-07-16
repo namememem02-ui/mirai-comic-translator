@@ -27,6 +27,8 @@ const previewToggleBtn = document.getElementById('previewToggleBtn');
 const exportChapterBtn = document.getElementById('exportChapterBtn');
 const chapterReviewBtn = document.getElementById('chapterReviewBtn');
 const viewportContainer = document.getElementById('viewportContainer');
+const inlineTranslationEditor = document.getElementById('inlineTranslationEditor');
+const inlineEditorStatus = document.getElementById('inlineEditorStatus');
 const canvasWrapper = document.querySelector('.canvas-wrapper');
 const activeImage = document.getElementById('activeImage');
 const bubbleOverlay = document.getElementById('bubbleOverlay');
@@ -75,6 +77,7 @@ let watermarkImage = null;
 let watermarkDrag = null;
 let copyPreviousSourceBubbles = [];
 let copyPreviousTargetIndex = -1;
+let inlineEditorSession = null;
 
 // App Settings (loaded from disk, applied globally)
 let appSettings = {
@@ -372,6 +375,165 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ==========================================================
+// Inline translation editor (Thai preview only)
+// ==========================================================
+
+function getInlineDisplayText(bubble) {
+  const activePage = images[activeIndex];
+  if (inlineEditorSession
+    && inlineEditorSession.pageIndex === activeIndex
+    && inlineEditorSession.pageName === activePage?.name
+    && inlineEditorSession.bubbleId === bubble?.bubble_id) {
+    return inlineEditorSession.draft;
+  }
+  return bubble?.translated_text || '';
+}
+
+function hideInlineEditorSurface() {
+  inlineTranslationEditor.hidden = true;
+  inlineTranslationEditor.classList.remove('is-error', 'is-composing');
+  inlineEditorStatus.textContent = '';
+  inlineEditorStatus.hidden = true;
+}
+
+function cancelInlineEditor() {
+  if (!inlineEditorSession) return;
+  inlineEditorSession = null;
+  hideInlineEditorSurface();
+  if (isPreviewMode) refreshTypesetView();
+}
+
+function openInlineEditor(bubble) {
+  const activePage = images[activeIndex];
+  if (!isPreviewMode || !activePage || !bubble || bubble.hidden) return;
+  if (inlineEditorSession) cancelInlineEditor();
+
+  const text = bubble.translated_text || '';
+  inlineEditorSession = {
+    pageIndex: activeIndex,
+    pageName: activePage.name,
+    bubbleId: bubble.bubble_id,
+    originalText: text,
+    draft: text,
+    composing: false
+  };
+
+  const style = window.InlineEditor.buildEditorStyle(bubble);
+  Object.assign(inlineTranslationEditor.style, style);
+  inlineEditorStatus.style.left = style.left;
+  inlineEditorStatus.style.top = `calc(${style.top} + ${style.height} + 6px)`;
+  const viewportWidth = Math.max(1, viewportContainer.getBoundingClientRect().width);
+  const imageWidth = Math.max(1, activeImage.naturalWidth || viewportWidth);
+  inlineTranslationEditor.style.fontSize = `${Math.max(12, Math.min(48, Number(bubble.font_size || 18) * viewportWidth / imageWidth))}px`;
+  inlineTranslationEditor.value = text;
+  inlineTranslationEditor.hidden = false;
+  inlineTranslationEditor.classList.remove('is-error', 'is-composing');
+  inlineEditorStatus.textContent = '';
+  inlineEditorStatus.hidden = true;
+  focusCard(bubble.bubble_id);
+  requestAnimationFrame(() => {
+    inlineTranslationEditor.focus();
+    inlineTranslationEditor.select();
+  });
+}
+
+async function confirmInlineEditor() {
+  if (!inlineEditorSession) return;
+  const session = inlineEditorSession;
+  const activePage = images[activeIndex];
+  const bubble = activePageTranslation.find(item => item.bubble_id === session.bubbleId);
+  if (!activePage || activeIndex !== session.pageIndex || activePage.name !== session.pageName || !bubble) {
+    cancelInlineEditor();
+    return;
+  }
+
+  const originalText = bubble.translated_text || '';
+  const undoLengthBeforeInline = undoStack.length;
+  pushUndoState();
+  bubble.translated_text = inlineEditorSession.draft;
+  let saveResult;
+  try {
+    saveResult = await saveCurrentPageTranslation(inlineEditorSession.pageIndex, activePageTranslation);
+  } catch (saveError) {
+    saveResult = { error: saveError.message || String(saveError) };
+  }
+
+  if (saveResult !== true) {
+    bubble.translated_text = originalText;
+    undoStack.length = undoLengthBeforeInline;
+    redoStack.length = 0;
+    updateUndoRedoBtns();
+    renderPageTranslation();
+    if (isPreviewMode) refreshTypesetView();
+    inlineEditorSession = session;
+    inlineTranslationEditor.classList.add('is-error');
+    inlineEditorStatus.textContent = 'บันทึกไม่สำเร็จ ข้อความเดิมยังไม่ถูกเปลี่ยน กรุณาลองอีกครั้ง';
+    inlineEditorStatus.hidden = false;
+    inlineTranslationEditor.focus();
+    return;
+  }
+
+  inlineEditorSession = null;
+  hideInlineEditorSurface();
+  renderPageTranslation();
+  if (isPreviewMode) refreshTypesetView();
+}
+
+inlineTranslationEditor.addEventListener('input', () => {
+  if (!inlineEditorSession) return;
+  inlineEditorSession.draft = inlineTranslationEditor.value;
+  inlineTranslationEditor.classList.remove('is-error');
+  inlineEditorStatus.textContent = '';
+  inlineEditorStatus.hidden = true;
+  refreshTypesetView();
+});
+
+inlineTranslationEditor.addEventListener('compositionstart', () => {
+  if (!inlineEditorSession) return;
+  inlineEditorSession.composing = true;
+  inlineTranslationEditor.classList.add('is-composing');
+});
+
+inlineTranslationEditor.addEventListener('compositionend', () => {
+  if (!inlineEditorSession) return;
+  inlineEditorSession.composing = false;
+  inlineTranslationEditor.classList.remove('is-composing');
+});
+
+inlineTranslationEditor.addEventListener('keydown', (event) => {
+  const action = window.InlineEditor.normalizeInlineShortcut(
+    event,
+    Boolean(inlineEditorSession?.composing || event.isComposing)
+  );
+  if (action === 'confirm') {
+    event.preventDefault();
+    confirmInlineEditor();
+  } else if (action === 'cancel') {
+    event.preventDefault();
+    cancelInlineEditor();
+  }
+});
+
+viewportContainer.addEventListener('dblclick', (event) => {
+  if (!isPreviewMode) return;
+  if (event.target === inlineTranslationEditor) return;
+  const bounds = viewportContainer.getBoundingClientRect();
+  if (bounds.width <= 0 || bounds.height <= 0) return;
+  const x = ((event.clientX - bounds.left) / bounds.width) * 1000;
+  const y = ((event.clientY - bounds.top) / bounds.height) * 1000;
+  const bubble = window.InlineEditor.findBubbleAtPoint(activePageTranslation, x, y);
+  if (!bubble) return;
+  event.preventDefault();
+  event.stopPropagation();
+  openInlineEditor(bubble);
+}, true);
+
+document.addEventListener('pointerdown', (event) => {
+  if (!inlineEditorSession || event.target === inlineTranslationEditor) return;
+  cancelInlineEditor();
+}, true);
+
+// ==========================================================
 // Copy translation from the immediately previous page
 // ==========================================================
 
@@ -397,6 +559,7 @@ function renderCopyPreviousPreview() {
 }
 
 copyPreviousPageBtn.addEventListener('click', async () => {
+  cancelInlineEditor();
   if (activeIndex <= 0 || !images[activeIndex]) return;
   const copyRequestIndex = activeIndex;
   const copyTargetPage = images[copyRequestIndex];
@@ -588,6 +751,7 @@ window.addEventListener('resize', () => {
 
 if (resetPageBtn) {
   resetPageBtn.addEventListener('click', async () => {
+    cancelInlineEditor();
     const activePage = images[activeIndex];
     if (!activePage) return;
     if (!confirm(`ลบการแปลหน้า "${activePage.name}" ทิ้งทั้งหมดใช่หรือไม่?\nสามารถแปลหน้านี้ใหม่ได้ด้วยปุ่ม "แปลหน้านี้"`)) return;
@@ -1257,6 +1421,7 @@ viewportContainer.addEventListener('pointercancel', () => { watermarkDrag = null
 
 // 5. Select Active Page
 async function selectPage(idx) {
+  cancelInlineEditor();
   const activePage = images[idx];
   if (!activePage) return;
   if (copyPreviousPageDialog.open) copyPreviousPageDialog.close();
@@ -1506,6 +1671,7 @@ function renderPageTranslation() {
     
     deleteBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
+      cancelInlineEditor();
       if (!confirm(`คุณต้องการลบ บอลลูน #${bubble.bubble_id} นี้ถาวรใช่หรือไม่?`)) return;
       pushUndoState();
       const activePage = images[activeIndex];
@@ -2029,6 +2195,7 @@ async function applyTranslationResult(result) {
 
 // 9. Translate Page via Gemini Call
 translatePageBtn.addEventListener('click', async () => {
+  cancelInlineEditor();
   if (activeIndex === -1 || !images[activeIndex]) return;
   const activePage = images[activeIndex];
 
@@ -2207,6 +2374,7 @@ addGlossaryBtn.addEventListener('click', () => {
 let isPreviewMode = false;
 previewToggleBtn.addEventListener('click', () => {
   isPreviewMode = !isPreviewMode;
+  if (!isPreviewMode) cancelInlineEditor();
   if (isPreviewMode) {
     previewToggleBtn.textContent = '👁️ ดูภาพต้นฉบับ';
     previewToggleBtn.classList.remove('btn-accent');
@@ -2363,8 +2531,9 @@ function renderTypesetTextLayer(renderToken = pageRenderGuard.current()) {
     
     const bgColor = sampleImageBackgroundAt(x1, y1, w, h);
     
-    if (bubble.translated_text) {
-      drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate, bubble.font_family, bubble.text_align);
+    const displayText = getInlineDisplayText(bubble);
+    if (displayText) {
+      drawTypesetText(ctx, displayText, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate, bubble.font_family, bubble.text_align);
     }
   });
 }
@@ -3532,6 +3701,7 @@ const colorPaintCanvas = document.getElementById('colorPaintCanvas');
 
 // 1. Tool Switcher
 function switchTool(tool) {
+  cancelInlineEditor();
   currentTool = tool;
   
   // Highlight active buttons
@@ -3705,6 +3875,7 @@ function getSVGCoords(e) {
 
 // 3. Mouse Event Listeners for Select/Add Bubble modes
 bubbleOverlay.addEventListener('mousedown', (e) => {
+  cancelInlineEditor();
   if (watermarkDrag) { e.preventDefault(); return; }
   if (currentTool === 'brush') return;
   

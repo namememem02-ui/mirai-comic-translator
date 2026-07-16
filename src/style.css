@@ -1486,7 +1486,8 @@ textarea:focus-visible,
   box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.28), 0 12px 30px rgba(0, 0, 0, 0.48);
 }
 
-.inline-translation-editor.has-error {
+.inline-translation-editor.has-error,
+.inline-translation-editor.is-error {
   border-color: #ef4444;
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.25);
 }
@@ -1498,7 +1499,7 @@ textarea:focus-visible,
 .inline-editor-status {
   position: absolute;
   z-index: 8;
-  display: none;
+  display: block;
   padding: 4px 7px;
   color: #fecaca;
   background: rgba(127, 29, 29, 0.95);
@@ -1506,4 +1507,8 @@ textarea:focus-visible,
   border-radius: 4px;
   font-size: 11px;
   pointer-events: none;
+}
+
+.inline-editor-status[hidden] {
+  display: none;
 }
