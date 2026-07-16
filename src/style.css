@@ -100,6 +100,17 @@ h1, h2, h3, h4, .app-title, .btn {
   border-radius: 50%;
 }
 
+#inpaintStatus { gap: 7px; }
+#retryInpaintBtn {
+  min-height: 24px;
+  padding: 2px 7px;
+  color: var(--ink-strong);
+  background: var(--surface-2);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+
 .key-status.checking .status-dot {
   background-color: #eab308;
   box-shadow: 0 0 6px #eab308;

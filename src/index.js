@@ -11,6 +11,8 @@ window.addEventListener('unhandledrejection', (e) => {
 const dropZone = document.getElementById('dropZone');
 const folderInput = document.getElementById('folderInput');
 const keyStatus = document.getElementById('keyStatus');
+const inpaintStatus = document.getElementById('inpaintStatus');
+const retryInpaintBtn = document.getElementById('retryInpaintBtn');
 const projectInfo = document.getElementById('projectInfo');
 const projName = document.getElementById('projName');
 const projChapter = document.getElementById('projChapter');
@@ -119,6 +121,25 @@ async function initApp() {
 
   // Apply settings to the Settings Dialog UI
   applySettingsToDialog();
+
+  const renderInpaintStatus = status => {
+    const state = status?.state || 'unavailable';
+    inpaintStatus.className = `key-status ${state === 'ready' ? 'connected' : state === 'starting' ? 'checking' : 'disconnected'}`;
+    inpaintStatus.querySelector('.status-text').textContent = state === 'ready'
+      ? 'AI รีทัชพร้อม'
+      : state === 'starting' ? 'กำลังเปิด AI รีทัช...' : 'AI รีทัชไม่พร้อม';
+    inpaintStatus.title = status?.message || 'สถานะระบบลบตัวอักษรต้นฉบับ';
+    retryInpaintBtn.style.display = state === 'unavailable' ? 'inline-flex' : 'none';
+  };
+  renderInpaintStatus(await window.api.getInpaintStatus());
+  window.api.onInpaintStatus(renderInpaintStatus);
+  retryInpaintBtn.addEventListener('click', async event => {
+    event.stopPropagation();
+    retryInpaintBtn.disabled = true;
+    renderInpaintStatus({ state: 'starting', message: 'กำลังลองเปิดใหม่' });
+    renderInpaintStatus(await window.api.retryInpaintSidecar());
+    retryInpaintBtn.disabled = false;
+  });
 
   // Then load API config
   const cfg = await window.api.getConfig();
@@ -2166,35 +2187,14 @@ async function renderTypesetImage(renderToken = pageRenderGuard.current()) {
       }
     } catch (err) {
       if (!pageRenderGuard.isCurrent(renderToken)) return;
-      console.warn('[⚠️] AI Inpainting failed or offline. Falling back to smooth flat color erase. Error:', err.message);
+      console.warn('[⚠️] AI Inpainting unavailable. Keeping the original image:', err.message);
     }
   }
 
   if (!pageRenderGuard.isCurrent(renderToken)) return;
   
-  // Handle smooth flat color erase fallback if clean background load failed
-  if (cleanedImgElement === activeImage) {
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tctx = tempCanvas.getContext('2d');
-    tctx.drawImage(activeImage, 0, 0);
-    
-    activePageTranslation.forEach((bubble) => {
-      if (!bubble.box_2d || bubble.box_2d.length !== 4) return;
-      const [ymin, xmin, ymax, xmax] = bubble.box_2d;
-      const x1 = (xmin / 1000) * canvas.width;
-      const y1 = (ymin / 1000) * canvas.height;
-      const x2 = (xmax / 1000) * canvas.width;
-      const y2 = (ymax / 1000) * canvas.height;
-      const w = x2 - x1;
-      const h = y2 - y1;
-      
-      const bgColor = sampleBubbleBackground(tctx, x1, y1, w, h);
-      drawSmoothErase(tctx, x1, y1, w, h, bgColor);
-    });
-    activeImage.src = tempCanvas.toDataURL('image/jpeg', 0.95);
-  } else {
+  // Never replace the source with a blocky automatic fallback when LaMa is unavailable.
+  if (cleanedImgElement !== activeImage) {
     // Prefer loading from base64 cached background string
     if (cacheKey && cleanedBgCache[cacheKey]) {
       activeImage.src = cleanedBgCache[cacheKey];
@@ -2578,9 +2578,6 @@ async function composeReviewPage(imgObj, translation) {
       const y = (ymin / 1000) * canvas.height;
       const width = ((xmax - xmin) / 1000) * canvas.width;
       const height = ((ymax - ymin) / 1000) * canvas.height;
-      if (background === sourceImage) {
-        drawSmoothErase(context, x, y, width, height, sampleBubbleBackground(context, x, y, width, height));
-      }
       if (bubble.translated_text && !bubble.hidden) {
         drawTypesetText(
           context, bubble.translated_text, x, y, width, height,
@@ -3279,7 +3276,8 @@ async function runExport(indicesToExport) {
           await new Promise((resolve, reject) => { cleanImg.onload = resolve; cleanImg.onerror = reject; });
           cleanedImg = cleanImg;
         } catch (err) {
-          console.warn('[⚠️] AI Inpainting failed for export. Falling back to smooth erase.', err.message);
+          console.warn('[⚠️] AI Inpainting unavailable for export. Keeping the original image.', err.message);
+          exportProgress.textContent = `คำเตือน: ${imgObj.name} ยังมีตัวอักษรต้นฉบับ เพราะ AI รีทัชไม่พร้อม`;
         }
       }
 
@@ -3311,11 +3309,6 @@ async function runExport(indicesToExport) {
           const y1 = (ymin / 1000) * canvas.height;
           const w  = ((xmax - xmin) / 1000) * canvas.width;
           const h  = ((ymax - ymin) / 1000) * canvas.height;
-
-          if (cleanedImg === img) {
-            const bgColor = sampleBubbleBackground(ctx, x1, y1, w, h);
-            drawSmoothErase(ctx, x1, y1, w, h, bgColor);
-          }
 
           const bgColorForContrast = (cleanedImg === img)
             ? sampleBubbleBackground(ctx, x1, y1, w, h)

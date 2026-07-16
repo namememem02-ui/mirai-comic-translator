@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createInpaintSidecarManager } = require('../lib/inpaint-sidecar-manager');
+const { createInpaintSidecarManager, defaultCandidates } = require('../lib/inpaint-sidecar-manager');
+
+test('discovers the existing user-level ct_venv before PATH launchers', () => {
+  const candidates = defaultCandidates('C:\\project', 'C:\\Users\\reader');
+  const managed = 'C:\\Users\\reader\\ct_venv\\Scripts\\python.exe';
+  assert.ok(candidates.includes(managed));
+  assert.ok(candidates.indexOf(managed) < candidates.indexOf('py'));
+});
 
 test('reuses an existing healthy server without spawning', async () => {
   let spawned = 0;
