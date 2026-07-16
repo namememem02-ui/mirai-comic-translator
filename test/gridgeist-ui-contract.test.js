@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const html = fs.readFileSync(path.join(__dirname, '../src/index.html'), 'utf8');
 const script = fs.readFileSync(path.join(__dirname, '../src/index.js'), 'utf8');
+const css = fs.readFileSync(path.join(__dirname, '../src/style.css'), 'utf8');
 
 test('every renderer getElementById dependency exists exactly once', () => {
   const ids = [...script.matchAll(/^const\s+\w+\s*=\s*document\.getElementById\(['"]([^'"]+)['"]\)/gm)]
@@ -51,4 +52,15 @@ test('workspace separates primary commands from contextual tools', () => {
   assert.match(html, /id="studioToolbar" class="[^"]*context-tool-bar[^"]*"[\s\S]*id="undoBtn"[\s\S]*id="watermarkToggleBtn"/);
   assert.match(html, /class="[^"]*page-rail-body[^"]*"[\s\S]*id="thumbnailsList"/);
   assert.match(html, /class="[^"]*inspector-dialogues[^"]*"[\s\S]*id="bubblesList"/);
+});
+
+test('Gridgeist CSS exposes tokens and responsive interaction contracts', () => {
+  for (const token of ['--surface-0', '--surface-1', '--rule', '--accent', '--danger', '--space-1', '--radius-sm']) {
+    assert.match(css, new RegExp(`${token}:`), `missing ${token}`);
+  }
+  assert.match(css, /\.workspace-shell\s*\{[^}]*grid-template-columns:/s);
+  assert.match(css, /:focus-visible/);
+  assert.match(css, /@media\s*\(max-width:\s*959px\)/);
+  assert.match(css, /@media\s*\(max-width:\s*719px\)/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
 });
