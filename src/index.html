@@ -34,6 +34,7 @@
       <div class="panel-header">
         <h2>คลังหน้าการ์ตูน</h2>
       </div>
+      <div class="page-rail-body">
       
       <!-- Drag & Drop / Upload Zone -->
       <div id="dropZone" class="drop-zone">
@@ -68,13 +69,14 @@
 
       <!-- Thumbnails Grid -->
       <div id="thumbnailsList" class="thumbnails-list"></div>
+      </div>
     </section>
 
     <!-- Column 2: Viewport Center -->
     <section class="panel viewport-panel canvas-stage">
       <div class="panel-header viewport-header">
         <h2 id="activePageTitle">กรุณาเลือกหน้าการ์ตูน</h2>
-        <div class="viewport-actions" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <div class="viewport-actions command-bar" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
           <!-- Zoom Controls — Slider -->
           <div style="display:flex; align-items:center; gap:6px; background:#1e293b; border:1px solid #334155; border-radius:6px; padding:3px 8px;">
             <span style="font-size:11px; color:#64748b; white-space:nowrap;">🔍</span>
@@ -107,7 +109,7 @@
         </div>
       </div>
       <!-- Studio Toolbar -->
-      <div id="studioToolbar" class="studio-toolbar" style="display: none; align-items: center; justify-content: space-between; flex-wrap:wrap; padding: 6px 12px; background: #1e293b; border-bottom: 1px solid #334155; gap: 12px;">
+      <div id="studioToolbar" class="studio-toolbar context-tool-bar" style="display: none; align-items: center; justify-content: space-between; flex-wrap:wrap; padding: 6px 12px; background: #1e293b; border-bottom: 1px solid #334155; gap: 12px;">
         <div class="toolbar-modes" style="display: flex; gap: 6px; align-items:center; flex-wrap:wrap;">
           <!-- Undo / Redo -->
           <button id="undoBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:4px 8px; font-size:13px; cursor:pointer;" title="ย้อนกลับ (Ctrl+Z)" disabled>↩️</button>
@@ -191,7 +193,7 @@
     <section class="panel editor-panel context-inspector">
       
       <!-- Glossary / Memory Tab -->
-      <div class="editor-section glossary-section">
+      <div class="editor-section glossary-section inspector-glossary">
         <div class="section-header">
           <h3>🧠 ความจำโปรเจกต์ (Glossary / Character Profile)</h3>
         </div>
@@ -208,7 +210,7 @@
       </div>
 
       <!-- Dialogue Bubbles List Tab -->
-      <div class="editor-section translation-section">
+      <div class="editor-section translation-section inspector-dialogues">
         <div class="section-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap:wrap; gap:4px;">
           <h3>📝 รายการบทสนทนา <span id="bubblesCountBadge" style="font-size:10px; background:#334155; padding:1px 6px; border-radius:10px; color:#94a3b8; font-weight:400;"></span></h3>
           <button id="addBubbleTextBtn" class="btn" style="font-size: 11px; padding: 2px 8px; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer;" title="เพิ่มกล่องข้อความใหม่ที่กึ่งกลางหน้าจอ">➕ เพิ่มข้อความ</button>

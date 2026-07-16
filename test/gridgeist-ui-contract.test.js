@@ -45,3 +45,10 @@ test('canvas layer IDs and order remain stable', () => {
   assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual([...positions].sort((a, b) => a - b), positions);
 });
+
+test('workspace separates primary commands from contextual tools', () => {
+  assert.match(html, /class="[^"]*command-bar[^"]*"[\s\S]*id="translatePageBtn"[\s\S]*id="exportChapterBtn"/);
+  assert.match(html, /id="studioToolbar" class="[^"]*context-tool-bar[^"]*"[\s\S]*id="undoBtn"[\s\S]*id="watermarkToggleBtn"/);
+  assert.match(html, /class="[^"]*page-rail-body[^"]*"[\s\S]*id="thumbnailsList"/);
+  assert.match(html, /class="[^"]*inspector-dialogues[^"]*"[\s\S]*id="bubblesList"/);
+});
