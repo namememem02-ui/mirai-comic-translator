@@ -1,5 +1,6 @@
 import sys
 import io
+import threading
 
 # Force UTF-8 encoding on Windows consoles to prevent UnicodeEncodeError crash
 if sys.platform.startswith('win'):
@@ -23,7 +24,7 @@ def patched_jit_load(f, map_location=None, *args, **kwargs):
 torch.jit.load = patched_jit_load
 
 import numpy as np
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
@@ -41,32 +42,42 @@ app.add_middleware(
 )
 
 lama = None
+model_state = "loading"
+model_message = "กำลังโหลดโมเดล LaMa"
+
+def load_model_worker():
+    global lama, model_state, model_message
+    try:
+        lama = SimpleLama()
+        model_state = "ready"
+        model_message = "AI รีทัชพร้อมใช้งาน"
+        print("[AI] LaMa Model is ready on port 5000!")
+    except Exception as e:
+        model_state = "error"
+        model_message = str(e)
+        print(f"[AI] Error loading model: {e}")
+        import traceback
+        traceback.print_exc()
 
 @app.on_event("startup")
 def load_model():
-    global lama
     print("\n" + "="*50)
     print("[AI] Loading LaMa Inpainting Model...")
     print("[AI] Note: First run will download model weights (~300MB) automatically.")
     print("="*50 + "\n")
-    try:
-        lama = SimpleLama()
-        print("\n" + "="*50)
-        print("[AI] LaMa Model is ready on port 5000!")
-        print("="*50 + "\n")
-    except Exception as e:
-        print(f"[AI] Error loading model: {e}")
-        import traceback
-        traceback.print_exc()
+    threading.Thread(target=load_model_worker, daemon=True).start()
+
+@app.get("/health")
+def health():
+    return {"state": model_state, "message": model_message}
 
 @app.post("/inpaint")
 async def inpaint(
     image: UploadFile = File(...),
     mask: UploadFile = File(...)
 ):
-    global lama
-    if lama is None:
-        lama = SimpleLama()
+    if model_state != "ready" or lama is None:
+        raise HTTPException(status_code=503, detail=model_message)
 
     try:
         # Read uploaded files

@@ -2,6 +2,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('api', {
   getConfig: () => ipcRenderer.invoke('get-config'),
+  getInpaintStatus: () => ipcRenderer.invoke('get-inpaint-status'),
+  retryInpaintSidecar: () => ipcRenderer.invoke('retry-inpaint-sidecar'),
+  onInpaintStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on('inpaint-status-changed', listener);
+    return () => ipcRenderer.removeListener('inpaint-status-changed', listener);
+  },
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   readFolder: (folderPath) => ipcRenderer.invoke('read-folder', folderPath),
   translatePage: (args) => ipcRenderer.invoke('translate-page', args),

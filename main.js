@@ -7,8 +7,17 @@ const { buildTranslationPrompt } = require('./lib/translation-prompt');
 const { createWatermarkStore } = require('./lib/watermark-store');
 const { sanitizeArchiveName, validateArchiveFiles, createArchiveBuffer } = require('./lib/facebook-archive');
 const { createChapterQualityStore } = require('./lib/chapter-quality-store');
+const { createInpaintSidecarManager } = require('./lib/inpaint-sidecar-manager');
 
 let mainWin = null;
+const inpaintSidecar = createInpaintSidecarManager({
+  projectRoot: __dirname,
+  onStatus: status => {
+    if (mainWin && !mainWin.isDestroyed()) {
+      mainWin.webContents.send('inpaint-status-changed', status);
+    }
+  },
+});
 
 // Resolve shared ScreenTranslator config path to reuse the API key
 const SHARED_CONFIG_DIR = path.join(
@@ -52,17 +61,23 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+  inpaintSidecar.ensureStarted();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
+app.on('before-quit', () => inpaintSidecar.shutdown());
+
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
 // ---------- IPC Handlers ----------
+
+ipcMain.handle('get-inpaint-status', () => inpaintSidecar.getStatus());
+ipcMain.handle('retry-inpaint-sidecar', () => inpaintSidecar.ensureStarted());
 
 ipcMain.handle('select-folder', async () => {
   if (!mainWin || mainWin.isDestroyed()) return null;
