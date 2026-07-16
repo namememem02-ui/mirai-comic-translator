@@ -3,6 +3,7 @@ dist/
 projects/
 output/
 .zcode/
+.worktrees/
 *.tmp
 *.bak
 *.log
