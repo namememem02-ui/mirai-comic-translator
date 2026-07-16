@@ -119,6 +119,7 @@
           <!-- Undo / Redo -->
           <button id="undoBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:4px 8px; font-size:13px; cursor:pointer;" title="ย้อนกลับ (Ctrl+Z)" disabled>↩️</button>
           <button id="redoBtn" style="background:#334155; border:1px solid #475569; color:#94a3b8; border-radius:4px; padding:4px 8px; font-size:13px; cursor:pointer;" title="ทำซ้ำ (Ctrl+Shift+Z)" disabled>↪️</button>
+          <button id="copyPreviousPageBtn" class="btn btn-tool" type="button" disabled title="คัดลอกคำแปลจากหน้าก่อน">⤵ คัดลอกจากหน้าก่อน</button>
           <div style="width:1px; height:20px; background:#334155; margin:0 2px;"></div>
           <button id="toolSelectBtn" class="btn btn-tool active" title="เครื่องมือเลือก ขยับ และยืดกล่องคำพูด" style="font-size: 12px; padding: 4px 10px; background: #334155; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; cursor: pointer;">
             🖐️ ขยับ/ยืดกล่อง
@@ -354,6 +355,35 @@
     </div>
   </dialog>
 
+  <dialog id="copyPreviousPageDialog" class="copy-previous-dialog settings-surface" aria-labelledby="copyPreviousTitle">
+    <header class="copy-previous-header">
+      <div>
+        <p class="copy-previous-kicker">COPY PREVIOUS PAGE</p>
+        <h2 id="copyPreviousTitle">คัดลอกคำแปลจากหน้าก่อน</h2>
+      </div>
+    </header>
+    <div class="copy-previous-body">
+      <section class="copy-previous-summary">
+        <span>หน้าต้นทาง</span>
+        <strong id="copyPreviousSourcePage">—</strong>
+        <p id="copyPreviousCounts">กำลังตรวจสอบข้อมูล…</p>
+      </section>
+      <label class="copy-previous-field" for="copyPreviousMode">
+        <span>สิ่งที่ต้องการคัดลอก</span>
+        <select id="copyPreviousMode">
+          <option value="text">เฉพาะข้อความ</option>
+          <option value="text-style">ข้อความและรูปแบบตัวอักษร</option>
+          <option value="full-bubble">ทั้งกรอบพร้อมตำแหน่ง</option>
+        </select>
+      </label>
+      <p id="copyPreviousWarning" class="copy-previous-warning" role="status"></p>
+    </div>
+    <div class="dialog-actions copy-previous-actions">
+      <button id="cancelCopyPreviousBtn" type="button" class="btn btn-secondary">ยกเลิก</button>
+      <button id="confirmCopyPreviousBtn" type="button" class="btn btn-primary" disabled>ยืนยันการคัดลอก</button>
+    </div>
+  </dialog>
+
   <!-- Export Modal Dialog -->
   <dialog id="exportDialog" class="export-surface" style="background:#0f172a; border:1px solid #334155; border-radius:14px; padding:0; color:#f8fafc; width:560px; max-width:96vw; box-shadow:0 25px 60px rgba(0,0,0,0.8);">
     <!-- Header -->
@@ -472,6 +502,7 @@
   <script src="text-overflow.js"></script>
   <script src="export-quality-controller.js"></script>
   <script src="inpaint-mask-geometry.js"></script>
+  <script src="copy-previous-page.js"></script>
   <script src="index.js"></script>
 </body>
 </html>
