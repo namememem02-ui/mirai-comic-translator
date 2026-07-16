@@ -19,6 +19,19 @@ test('reuses an existing healthy server without spawning', async () => {
   assert.equal(spawned, 0);
 });
 
+test('waits for an existing loading server instead of spawning a duplicate', async () => {
+  let probes = 0;
+  let spawned = 0;
+  const manager = createInpaintSidecarManager({
+    probe: async () => ({ state: ++probes >= 2 ? 'ready' : 'starting', reachable: true }),
+    spawn: () => { spawned += 1; },
+    wait: async () => {},
+    maxPolls: 2,
+  });
+  assert.equal((await manager.ensureStarted()).state, 'ready');
+  assert.equal(spawned, 0);
+});
+
 test('deduplicates startup, tries Python candidates, and stops only its child', async () => {
   let probes = 0;
   let spawns = 0;
