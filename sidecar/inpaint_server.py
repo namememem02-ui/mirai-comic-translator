@@ -77,46 +77,9 @@ async def inpaint(
         img_pil = Image.open(io.BytesIO(img_bytes)).convert("RGB")
         mask_pil = Image.open(io.BytesIO(mask_bytes)).convert("L")
 
-        # Run AI Inpainting with Patch-based crop & paste to preserve high-res details and prevent blurriness
-        mask_np = np.array(mask_pil)
-        
-        import cv2
-        _, thresh = cv2.threshold(mask_np, 127, 255, cv2.THRESH_BINARY)
-        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        if len(contours) > 0:
-            img_np = np.array(img_pil)
-            h, w, _ = img_np.shape
-            result_np = img_np.copy()
-            
-            for contour in contours:
-                x, y, gw, gh = cv2.boundingRect(contour)
-                # Add 32px padding on all sides for texture context
-                pad = 32
-                x1 = max(0, x - pad)
-                y1 = max(0, y - pad)
-                x2 = min(w, x + gw + pad)
-                y2 = min(h, y + gh + pad)
-                
-                # Crop patches
-                crop_img = img_np[y1:y2, x1:x2]
-                crop_mask = mask_np[y1:y2, x1:x2]
-                
-                crop_img_pil = Image.fromarray(crop_img)
-                crop_mask_pil = Image.fromarray(crop_mask)
-                
-                # Inpaint patch
-                crop_result_pil = lama(crop_img_pil, crop_mask_pil)
-                
-                # Paste back, ensuring dimensions match original crop boundaries to prevent ValueError
-                crop_result_np = np.array(crop_result_pil)
-                if crop_result_np.shape[0] != (y2 - y1) or crop_result_np.shape[1] != (x2 - x1):
-                    crop_result_np = cv2.resize(crop_result_np, (x2 - x1, y2 - y1), interpolation=cv2.INTER_AREA)
-                result_np[y1:y2, x1:x2] = crop_result_np
-                
-            result_pil = Image.fromarray(result_np)
-        else:
-            result_pil = img_pil
+        # Preserve the complete page context. Patch cropping produced visible seams
+        # and block-shaped texture changes around large dialogue regions.
+        result_pil = lama(img_pil, mask_pil)
 
         # Save output image to a memory stream
         output_buffer = io.BytesIO()
