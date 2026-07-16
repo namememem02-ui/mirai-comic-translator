@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -8,6 +8,7 @@ const { createWatermarkStore } = require('./lib/watermark-store');
 const { sanitizeArchiveName, validateArchiveFiles, createArchiveBuffer } = require('./lib/facebook-archive');
 const { createChapterQualityStore } = require('./lib/chapter-quality-store');
 const { createInpaintSidecarManager } = require('./lib/inpaint-sidecar-manager');
+const { planTranslationTiles, mergeTileResults } = require('./lib/translation-tiling');
 
 let mainWin = null;
 const inpaintSidecar = createInpaintSidecarManager({
@@ -193,24 +194,12 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
   }
 });
 
-// Load image as base64 helper
-function fileToBase64(filePath) {
-  const fileBuffer = fs.readFileSync(filePath);
-  return fileBuffer.toString('base64');
-}
-
-// IPC Translation call
-ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
+async function requestGeminiTranslation({ data, mimeType, glossary }) {
   const cfg = loadSharedConfig();
   const apiKey = cfg.apiKey;
   if (!apiKey) {
     throw new Error('ยังไม่ได้ตั้งค่า API Key — กรุณาไปบันทึก API Key ในโปรแกรม ScreenTranslator ก่อนครับ');
   }
-
-  // Load and encode image
-  const base64Image = fileToBase64(imagePath);
-  const ext = path.extname(imagePath).toLowerCase();
-  const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
 
   const prompt = buildTranslationPrompt(glossary);
 
@@ -228,7 +217,7 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
               {
                 inlineData: {
                   mimeType: mimeType,
-                  data: base64Image
+                  data: data.toString('base64')
                 }
               },
               {
@@ -277,6 +266,46 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
     }
   }
   throw lastErr;
+}
+
+// IPC Translation call
+ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
+  const sourceImage = nativeImage.createFromPath(imagePath);
+  if (sourceImage.isEmpty()) {
+    throw new Error('ไม่สามารถอ่านไฟล์ภาพสำหรับแปลได้');
+  }
+
+  const imageSize = sourceImage.getSize();
+  const tiles = planTranslationTiles(imageSize.width, imageSize.height);
+  const ext = path.extname(imagePath).toLowerCase();
+  const originalMimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+
+  if (tiles[0].isFullPage) {
+    return requestGeminiTranslation({
+      data: fs.readFileSync(imagePath),
+      mimeType: originalMimeType,
+      glossary,
+    });
+  }
+
+  const tileEntries = [];
+  for (const tile of tiles) {
+    const croppedImage = sourceImage.crop({
+      x: 0,
+      y: tile.cropStart,
+      width: tile.width,
+      height: tile.height,
+    });
+    const usePng = ext === '.png';
+    const result = await requestGeminiTranslation({
+      data: usePng ? croppedImage.toPNG() : croppedImage.toJPEG(95),
+      mimeType: usePng ? 'image/png' : 'image/jpeg',
+      glossary,
+    });
+    tileEntries.push({ tile, result });
+  }
+
+  return mergeTileResults(tileEntries, imageSize.width, imageSize.height);
 });
 
 // Local project save/load handlers
