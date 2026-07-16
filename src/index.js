@@ -2795,10 +2795,159 @@ const doExportBtnLabel  = document.getElementById('doExportBtnLabel');
 const facebookExportBtn = document.getElementById('facebookExportBtn');
 const facebookArchiveName = document.getElementById('facebookArchiveName');
 const facebookMaxImages = document.getElementById('facebookMaxImages');
+const qualityPanel = document.getElementById('qualityPanel');
+const qualityProgress = document.getElementById('qualityProgress');
+const qualitySummary = document.getElementById('qualitySummary');
+const qualityIssueList = document.getElementById('qualityIssueList');
+const qualityRescanBtn = document.getElementById('qualityRescanBtn');
+const qualityContinueBtn = document.getElementById('qualityContinueBtn');
+const exportWorkflowOptions = document.getElementById('exportWorkflowOptions');
+const qualityFilterButtons = [...document.querySelectorAll('.quality-filters button')];
 
 let exportMode = 'all'; // 'all' | 'select'
 // Map pageName → { translated: bool }
 let exportPageMeta = {};
+let exportQualityReport = null;
+let exportQualityFilter = 'all';
+let qualityExcludedPages = new Set();
+
+const exportQualityNavigation = window.ExportQualityController.create({
+  selectPage,
+  waitForPage: () => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  selectBubble: bubbleId => {
+    const bubble = activePageTranslation.find(item => String(item.bubble_id) === String(bubbleId));
+    if (!bubble) return false;
+    focusCard(bubble.bubble_id);
+    highlightCard(bubble.bubble_id);
+    highlightOverlayRect(bubble.bubble_id);
+    return true;
+  },
+  revealBubble: bubbleId => {
+    const card = bubblesList.querySelector(`.bubble-editor-card[data-id="${bubbleId}"]`);
+    card?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  },
+  notify: message => alert(message),
+});
+
+function qualityFilterMatches(result) {
+  if (exportQualityFilter === 'all') return true;
+  if (exportQualityFilter === 'pass') return result.status === 'pass' || result.status === 'excluded';
+  return result.status === exportQualityFilter;
+}
+
+function renderExportQualityReport() {
+  if (!exportQualityReport) return;
+  const { summary, results } = exportQualityReport;
+  qualitySummary.innerHTML = `
+    <div><strong>${summary.errors}</strong><span>ข้อผิดพลาด</span></div>
+    <div><strong>${summary.warnings}</strong><span>คำเตือน</span></div>
+    <div><strong>${summary.passed}</strong><span>ผ่าน</span></div>
+    <div><strong>${summary.excluded}</strong><span>ไม่ต้องแปล</span></div>`;
+  qualityIssueList.innerHTML = '';
+  const visible = results.filter(qualityFilterMatches);
+  if (!visible.length) qualityIssueList.innerHTML = '<p class="quality-empty">ไม่พบรายการในตัวกรองนี้</p>';
+
+  visible.forEach(result => {
+    const row = document.createElement('article');
+    row.className = `quality-page quality-${result.status}`;
+    const heading = document.createElement('div');
+    heading.className = 'quality-page-heading';
+    const label = result.status === 'pass' ? 'ผ่าน' : result.status === 'excluded' ? 'ไม่ต้องแปล' : `${result.issues.length} รายการ`;
+    heading.innerHTML = `<strong>หน้า ${result.pageIndex + 1}</strong><span title="${result.pageName}">${result.pageName}</span><em>${label}</em>`;
+    row.appendChild(heading);
+    result.issues.forEach(item => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `quality-issue quality-${item.severity}`;
+      const detail = item.code === 'GLOSSARY_MISMATCH' ? ` — ควรใช้ “${item.details.expected}” แทน ${item.details.source}` : '';
+      button.textContent = `${item.message}${item.bubbleId == null ? '' : ` (กล่อง #${item.bubbleId})`}${detail}`;
+      button.addEventListener('click', async () => {
+        exportDialog.close();
+        await exportQualityNavigation.goToIssue({ ...item, pageIndex: result.pageIndex });
+      });
+      row.appendChild(button);
+    });
+    if (result.issues.some(item => item.code === 'PAGE_UNTRANSLATED') || result.status === 'excluded') {
+      const exclusion = document.createElement('label');
+      exclusion.className = 'quality-exclusion';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = qualityExcludedPages.has(result.pageName);
+      checkbox.addEventListener('change', async () => {
+        if (checkbox.checked) qualityExcludedPages.add(result.pageName);
+        else qualityExcludedPages.delete(result.pageName);
+        await window.api.saveChapterQualityState({
+          project: currentProject, chapter: currentChapter,
+          pageNames: images.map(image => image.name), excludedPages: [...qualityExcludedPages],
+        });
+        await runExportQualityScan();
+      });
+      exclusion.append(checkbox, document.createTextNode(' หน้านี้ไม่ต้องแปล'));
+      row.appendChild(exclusion);
+    }
+    qualityIssueList.appendChild(row);
+  });
+  const hasIssues = summary.errors + summary.warnings > 0;
+  qualityContinueBtn.textContent = hasIssues ? 'ส่งออกต่อแม้มีคำเตือน' : 'ไปขั้นตอนส่งออก';
+}
+
+function measureBubbleOverflow(bubble, imageWidth, imageHeight, context) {
+  const box = bubble.box_2d;
+  if (!window.ExportQuality.validBox(box)) return false;
+  const width = ((box[3] - box[1]) / 1000) * imageWidth * 0.85;
+  const height = ((box[2] - box[0]) / 1000) * imageHeight * 0.85;
+  const fontSize = Number(bubble.font_size) || 6;
+  context.font = `bold ${fontSize}px '${bubble.font_family || 'Sarabun'}', 'Segoe UI', sans-serif`;
+  return window.TextOverflow.isTextOverflowing({
+    text: bubble.translated_text, boxWidth: width, boxHeight: height,
+    fontSize, lineHeight: fontSize * 1.25,
+  }, window.TextOverflow.createCanvasAdapter(context));
+}
+
+async function runExportQualityScan() {
+  qualityRescanBtn.disabled = true;
+  qualityContinueBtn.disabled = true;
+  qualityIssueList.innerHTML = '<p class="quality-empty">กำลังตรวจคำแปลที่บันทึกไว้...</p>';
+  const savedState = await window.api.loadChapterQualityState({
+    project: currentProject, chapter: currentChapter, pageNames: images.map(image => image.name),
+  });
+  qualityExcludedPages = new Set(savedState?.excludedPages || []);
+  const pages = [];
+  const context = document.createElement('canvas').getContext('2d');
+  for (let pageIndex = 0; pageIndex < images.length; pageIndex += 1) {
+    const image = images[pageIndex];
+    qualityProgress.textContent = `กำลังตรวจหน้า ${pageIndex + 1} / ${images.length}`;
+    try {
+      const translation = await window.api.loadPageTranslation({
+        project: currentProject, chapter: currentChapter, pageName: image.name,
+      });
+      const source = await loadImageElement(image.fileUrl);
+      pages.push(window.ExportQuality.inspectPage({
+        pageName: image.name, pageIndex, translation, glossary: projectGlossary,
+        excluded: qualityExcludedPages.has(image.name),
+        measureOverflow: ({ bubble }) => measureBubbleOverflow(bubble, source.naturalWidth, source.naturalHeight, context),
+      }));
+    } catch (error) {
+      pages.push({ pageName: image.name, pageIndex, status: 'warning', issues: [{
+        code: 'INSPECTION_INCOMPLETE', severity: 'warning', bubbleId: null,
+        message: `ตรวจหน้านี้ไม่สมบูรณ์: ${error.message}`, details: {},
+      }] });
+    }
+    await new Promise(resolve => requestAnimationFrame(resolve));
+  }
+  const summary = pages.reduce((value, result) => {
+    if (result.status === 'error') value.errors += 1;
+    else if (result.status === 'warning') value.warnings += 1;
+    else if (result.status === 'excluded') value.excluded += 1;
+    else value.passed += 1;
+    return value;
+  }, { errors: 0, warnings: 0, passed: 0, excluded: 0 });
+  exportQualityReport = { results: pages, summary };
+  qualityProgress.textContent = `ตรวจครบ ${images.length} หน้าแล้ว`;
+  qualityRescanBtn.disabled = false;
+  qualityContinueBtn.disabled = false;
+  renderExportQualityReport();
+}
 
 // ------ Tab switch ------
 function switchExportMode(mode) {
@@ -2864,6 +3013,18 @@ function updateExportButtonLabel() {
   }
 }
 
+qualityFilterButtons.forEach(button => button.addEventListener('click', () => {
+  exportQualityFilter = button.dataset.filter;
+  qualityFilterButtons.forEach(item => item.classList.toggle('active', item === button));
+  renderExportQualityReport();
+}));
+qualityRescanBtn.addEventListener('click', runExportQualityScan);
+document.getElementById('qualityBackToEditBtn').addEventListener('click', () => exportDialog.close());
+qualityContinueBtn.addEventListener('click', () => {
+  qualityPanel.style.display = 'none';
+  exportWorkflowOptions.style.display = 'block';
+});
+
 // ------ Open Modal ------
 async function openExportDialog() {
   if (!currentProject || images.length === 0) {
@@ -2875,6 +3036,10 @@ async function openExportDialog() {
   facebookArchiveName.value = `${currentProject}-${currentChapter}-facebook`;
   doExportBtn.disabled = false;
   doExportBtn.style.opacity = '1';
+  qualityPanel.style.display = 'block';
+  exportWorkflowOptions.style.display = 'none';
+  exportQualityFilter = 'all';
+  qualityFilterButtons.forEach(button => button.classList.toggle('active', button.dataset.filter === 'all'));
   switchExportMode('all');
 
   // Subtitle
@@ -2886,6 +3051,7 @@ async function openExportDialog() {
   // Build page checklist
   exportPageList.innerHTML = '<div style="padding:8px 12px; color:#64748b; font-size:11px;">⏳ กำลังตรวจสอบสถานะ...</div>';
   exportDialog.showModal();
+  await runExportQualityScan();
 
   // Async: load translation status per page
   exportPageMeta = {};

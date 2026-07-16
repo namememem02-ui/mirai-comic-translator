@@ -360,6 +360,29 @@
       <button id="closeExportDialogBtn" style="background:none; border:none; color:#64748b; font-size:20px; cursor:pointer; padding:0; line-height:1;">✕</button>
     </div>
 
+    <section id="qualityPanel" class="quality-panel export-step">
+      <div class="quality-heading">
+        <div>
+          <h3>ตรวจคุณภาพก่อนส่งออก</h3>
+          <p id="qualityProgress">กำลังเตรียมตรวจ...</p>
+        </div>
+        <button id="qualityRescanBtn" type="button">ตรวจอีกครั้ง</button>
+      </div>
+      <div id="qualitySummary" class="quality-summary"></div>
+      <div class="quality-filters" aria-label="กรองผลการตรวจ">
+        <button id="qualityFilterAll" type="button" data-filter="all" class="active">ทั้งหมด</button>
+        <button id="qualityFilterErrors" type="button" data-filter="error">ข้อผิดพลาด</button>
+        <button id="qualityFilterWarnings" type="button" data-filter="warning">คำเตือน</button>
+        <button id="qualityFilterPassed" type="button" data-filter="pass">ผ่าน</button>
+      </div>
+      <div id="qualityIssueList" class="quality-issue-list"></div>
+      <div class="quality-actions">
+        <button id="qualityBackToEditBtn" type="button">กลับไปแก้ไข</button>
+        <button id="qualityContinueBtn" type="button">ส่งออกต่อแม้มีคำเตือน</button>
+      </div>
+    </section>
+
+    <div id="exportWorkflowOptions" style="display:none;">
     <!-- Mode Toggle Tabs -->
     <div class="export-step export-mode-switch" style="display:flex; gap:0; border-bottom:1px solid #1e293b;">
       <button id="exportModeAllBtn"
@@ -429,6 +452,7 @@
     </div>
     <div style="padding:0 22px 12px; color:#f59e0b; font-size:11px;">
       Facebook: กระจายจำนวนชิ้นตามความยาวของแต่ละหน้า อาจตัดกลางข้อความหรือภาพได้
+    </div>
     </div>
   </dialog>
 
