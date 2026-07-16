@@ -2474,29 +2474,25 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
     const w = x2 - x1;
     const h = y2 - y1;
     
-    let mx1, my1, mw, mh;
-    
-    if (appSettings.inpaintMode === 'tight') {
-      // Tight fit: shrink mask to cover only the text area (~60% width, 70% height)
-      const shrinkX = w * 0.20; // shrink 20% each side
-      const shrinkY = h * 0.15; // shrink 15% each side
-      mx1 = x1 + shrinkX;
-      my1 = y1 + shrinkY;
-      mw = w - shrinkX * 2;
-      mh = h - shrinkY * 2;
-    } else {
-      // Full box: Pad mask slightly to capture overflow text near borders
-      const padX = Math.max(8, w * 0.04);
-      const padY = Math.max(12, h * 0.08);
-      mx1 = x1 - padX;
-      my1 = y1 - padY;
-      mw = w + padX * 2;
-      mh = h + padY * 2;
-    }
+    const maskRect = window.InpaintMaskGeometry.calculateMaskRect({
+      x: x1,
+      y: y1,
+      width: w,
+      height: h,
+      imageWidth: canvasWidth,
+      imageHeight: canvasHeight,
+      mode: appSettings.inpaintMode
+    });
     
     mctx.fillStyle = '#ffffff';
     mctx.beginPath();
-    mctx.roundRect(mx1, my1, Math.max(1, mw), Math.max(1, mh), Math.min(mw, mh) * 0.15);
+    mctx.roundRect(
+      maskRect.x,
+      maskRect.y,
+      maskRect.width,
+      maskRect.height,
+      Math.min(maskRect.width, maskRect.height) * 0.15
+    );
     mctx.fill();
   });
 
