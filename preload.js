@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld('api', {
   saveFacebookArchive: (args) => ipcRenderer.invoke('save-facebook-archive', args),
   savePageTranslation: (args) => ipcRenderer.invoke('save-page-translation', args),
   loadPageTranslation: (args) => ipcRenderer.invoke('load-page-translation', args),
+  loadChapterQualityState: (args) => ipcRenderer.invoke('load-chapter-quality-state', args),
+  saveChapterQualityState: (args) => ipcRenderer.invoke('save-chapter-quality-state', args),
   saveMemory: (args) => ipcRenderer.invoke('save-memory', args),
   loadMemory: (args) => ipcRenderer.invoke('load-memory', args),
   saveCustomMask: (args) => ipcRenderer.invoke('save-custom-mask', args),

@@ -6,6 +6,7 @@ const { readJsonWithRecovery, writeJsonAtomic } = require('./lib/atomic-json');
 const { buildTranslationPrompt } = require('./lib/translation-prompt');
 const { createWatermarkStore } = require('./lib/watermark-store');
 const { sanitizeArchiveName, validateArchiveFiles, createArchiveBuffer } = require('./lib/facebook-archive');
+const { createChapterQualityStore } = require('./lib/chapter-quality-store');
 
 let mainWin = null;
 
@@ -18,6 +19,7 @@ const SHARED_CONFIG_PATH = path.join(SHARED_CONFIG_DIR, 'config.json');
 
 const PROJECTS_DIR = path.join(__dirname, 'projects');
 const watermarkStore = createWatermarkStore(PROJECTS_DIR);
+const chapterQualityStore = createChapterQualityStore(PROJECTS_DIR);
 
 // Ensure projects directory exists
 if (!fs.existsSync(PROJECTS_DIR)) {
@@ -320,6 +322,22 @@ ipcMain.handle('load-page-translation', (_e, { project, chapter, pageName }) => 
     return null;
   } catch (err) {
     return null;
+  }
+});
+
+ipcMain.handle('load-chapter-quality-state', (_e, { project, chapter, pageNames }) => {
+  try {
+    return chapterQualityStore.load(project, chapter, pageNames);
+  } catch (err) {
+    return { error: err.message, schemaVersion: 1, excludedPages: [] };
+  }
+});
+
+ipcMain.handle('save-chapter-quality-state', (_e, { project, chapter, pageNames, excludedPages }) => {
+  try {
+    return chapterQualityStore.save(project, chapter, pageNames, excludedPages);
+  } catch (err) {
+    return { error: err.message };
   }
 });
 
