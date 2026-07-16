@@ -51,6 +51,14 @@ const chapterReviewScroll = document.getElementById('chapterReviewScroll');
 const chapterReviewColumn = document.getElementById('chapterReviewColumn');
 const reviewPageSelector = document.getElementById('reviewPageSelector');
 const chapterReviewCount = document.getElementById('chapterReviewCount');
+const copyPreviousPageBtn = document.getElementById('copyPreviousPageBtn');
+const copyPreviousPageDialog = document.getElementById('copyPreviousPageDialog');
+const copyPreviousSourcePage = document.getElementById('copyPreviousSourcePage');
+const copyPreviousCounts = document.getElementById('copyPreviousCounts');
+const copyPreviousMode = document.getElementById('copyPreviousMode');
+const copyPreviousWarning = document.getElementById('copyPreviousWarning');
+const cancelCopyPreviousBtn = document.getElementById('cancelCopyPreviousBtn');
+const confirmCopyPreviousBtn = document.getElementById('confirmCopyPreviousBtn');
 
 // App State
 let currentProject = '';
@@ -65,6 +73,8 @@ const pageRenderGuard = window.RenderGuard.createRenderGuard();
 let watermarkSettings = window.WatermarkGeometry.normalizeSettings({});
 let watermarkImage = null;
 let watermarkDrag = null;
+let copyPreviousSourceBubbles = [];
+let copyPreviousTargetIndex = -1;
 
 // App Settings (loaded from disk, applied globally)
 let appSettings = {
@@ -359,6 +369,112 @@ document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && !e.shiftKey && e.key === 'z') { e.preventDefault(); undo(); }
   if (e.ctrlKey && e.shiftKey && e.key === 'Z') { e.preventDefault(); redo(); }
   if (e.ctrlKey && e.key === 'y') { e.preventDefault(); redo(); }
+});
+
+// ==========================================================
+// Copy translation from the immediately previous page
+// ==========================================================
+
+function renderCopyPreviousPreview() {
+  const preview = window.CopyPreviousPage.buildCopyPreview({
+    source: copyPreviousSourceBubbles,
+    current: activePageTranslation,
+    mode: copyPreviousMode.value
+  });
+
+  if (copyPreviousMode.value === 'full-bubble') {
+    copyPreviousCounts.textContent = `เพิ่ม ${preview.appendedCount} กรอบต่อท้าย ${preview.currentCount} กรอบเดิม`;
+  } else {
+    copyPreviousCounts.textContent = `จับคู่ได้ ${preview.pairedCount} จากหน้าก่อน ${preview.sourceCount} กรอบ และหน้าปัจจุบัน ${preview.currentCount} กรอบ`;
+  }
+
+  const warnings = [];
+  if (preview.sourceCount === 0) warnings.push('หน้าก่อนไม่มีคำแปลที่บันทึกไว้');
+  if (preview.unmatchedSourceCount) warnings.push(`กรอบจากหน้าก่อนเหลือ ${preview.unmatchedSourceCount} กรอบ`);
+  if (preview.unmatchedCurrentCount) warnings.push(`กรอบหน้าปัจจุบันเหลือ ${preview.unmatchedCurrentCount} กรอบ`);
+  copyPreviousWarning.textContent = warnings.join(' • ');
+  confirmCopyPreviousBtn.disabled = !preview.canConfirm;
+}
+
+copyPreviousPageBtn.addEventListener('click', async () => {
+  if (activeIndex <= 0 || !images[activeIndex]) return;
+  const copyRequestIndex = activeIndex;
+  const copyTargetPage = images[copyRequestIndex];
+  const copySourcePage = images[copyRequestIndex - 1];
+
+  copyPreviousPageBtn.disabled = true;
+  let loaded = [];
+  let copyLoadMessage = '';
+  try {
+    loaded = await window.api.loadPageTranslation({
+      project: currentProject,
+      chapter: currentChapter,
+      pageName: copySourcePage.name
+    });
+  } catch (loadError) {
+    copyLoadMessage = `โหลดคำแปลหน้าก่อนไม่สำเร็จ: ${loadError.message || loadError}`;
+  }
+  if (activeIndex !== copyRequestIndex || images[activeIndex]?.name !== copyTargetPage.name) return;
+
+  copyPreviousTargetIndex = copyRequestIndex;
+  copyPreviousSourceBubbles = Array.isArray(loaded) ? loaded : [];
+  copyPreviousMode.value = 'text';
+  copyPreviousSourcePage.textContent = copySourcePage.name;
+  renderCopyPreviousPreview();
+  if (copyLoadMessage) copyPreviousWarning.textContent = copyLoadMessage;
+  copyPreviousPageDialog.showModal();
+  copyPreviousPageBtn.disabled = activeIndex <= 0;
+});
+
+copyPreviousMode.addEventListener('change', renderCopyPreviousPreview);
+cancelCopyPreviousBtn.addEventListener('click', () => copyPreviousPageDialog.close());
+
+confirmCopyPreviousBtn.addEventListener('click', async () => {
+  const copyTargetIndex = copyPreviousTargetIndex;
+  const copyTargetPage = images[copyTargetIndex];
+  if (!copyTargetPage || copyTargetIndex !== activeIndex) {
+    copyPreviousPageDialog.close();
+    return;
+  }
+
+  const previousTranslation = JSON.parse(JSON.stringify(activePageTranslation));
+  const undoLengthBeforeCopy = undoStack.length;
+  const copyResult = window.CopyPreviousPage.copyPreviousPage({
+    source: copyPreviousSourceBubbles,
+    current: activePageTranslation,
+    mode: copyPreviousMode.value
+  });
+
+  confirmCopyPreviousBtn.disabled = true;
+  pushUndoState();
+  activePageTranslation = copyResult;
+  delete cleanedBgCache[copyTargetPage.name];
+  let saveResult;
+  try {
+    saveResult = await saveCurrentPageTranslation(copyTargetIndex, copyResult);
+  } catch (saveError) {
+    saveResult = { error: saveError.message || String(saveError) };
+  }
+
+  if (saveResult !== true) {
+    if (activeIndex === copyTargetIndex && images[activeIndex]?.name === copyTargetPage.name) {
+      activePageTranslation = previousTranslation;
+      undoStack.length = undoLengthBeforeCopy;
+      redoStack.length = 0;
+      updateUndoRedoBtns();
+      renderPageTranslation();
+      if (isPreviewMode) refreshTypesetView();
+      copyPreviousWarning.textContent = 'บันทึกไม่สำเร็จ ข้อมูลเดิมถูกคืนกลับแล้ว กรุณาลองอีกครั้ง';
+      confirmCopyPreviousBtn.disabled = false;
+    }
+    return;
+  }
+
+  if (activeIndex === copyTargetIndex && images[activeIndex]?.name === copyTargetPage.name) {
+    renderPageTranslation();
+    if (isPreviewMode) refreshTypesetView();
+    copyPreviousPageDialog.close();
+  }
 });
 
 // ==========================================================
@@ -1143,6 +1259,7 @@ viewportContainer.addEventListener('pointercancel', () => { watermarkDrag = null
 async function selectPage(idx) {
   const activePage = images[idx];
   if (!activePage) return;
+  if (copyPreviousPageDialog.open) copyPreviousPageDialog.close();
   const renderToken = pageRenderGuard.begin(activePage.name);
   activeIndex = idx;
   clearTransientPreviewLayers();
@@ -1254,6 +1371,7 @@ async function selectPage(idx) {
   previewToggleBtn.disabled = false;
   exportChapterBtn.disabled = false;
   chapterReviewBtn.disabled = false;
+  copyPreviousPageBtn.disabled = activeIndex <= 0;
   if (resetPageBtn) resetPageBtn.style.display = 'inline-flex';
   // Clear undo/redo stacks when switching page
   undoStack.length = 0;
@@ -1871,25 +1989,27 @@ function unhighlightOverlayRect(bubbleId) {
 }
 
 // 8. Save/Save-Loop Page Translations
-async function saveCurrentPageTranslation() {
-  if (activeIndex === -1 || !images[activeIndex]) return;
-  const activePage = images[activeIndex];
+async function saveCurrentPageTranslation(pageIndex = activeIndex, translationData = activePageTranslation) {
+  if (pageIndex === -1 || !images[pageIndex]) return false;
+  const activePage = images[pageIndex];
   
-  await window.api.savePageTranslation({
+  const saveResult = await window.api.savePageTranslation({
     project: currentProject,
     chapter: currentChapter,
     pageName: activePage.name,
-    translationData: activePageTranslation
+    translationData
   });
+  if (saveResult !== true) return saveResult;
 
   // Re-verify and update translated checkmarks in explorer thumbnails
   const items = thumbnailsList.querySelectorAll('.thumb-item');
-  const activeItem = items[activeIndex];
+  const activeItem = items[pageIndex];
   if (activeItem) {
     const status = activeItem.querySelector('.thumb-status');
     status.className = 'thumb-status translated';
     status.innerHTML = '<span>✅ แปลเสร็จแล้ว</span>';
   }
+  return true;
 }
 
 async function applyTranslationResult(result) {
