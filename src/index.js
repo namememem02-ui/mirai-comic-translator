@@ -226,7 +226,7 @@ function formatProjectBackupBytes(value) {
 function renderProjectRestoreSummary(summary) {
   const fields = [
     ['โครงการต้นฉบับ', summary.originalProjectName],
-    ['รูปแบบไฟล์สำรอง', summary.backupVersion || 'ComicTranslator Backup'],
+    ['รูปแบบไฟล์สำรอง', summary.backupVersion],
     ['เวอร์ชันแอป', summary.appVersion],
     ['เวอร์ชันโครงสร้าง', summary.schemaVersion],
     ['จำนวนตอน', summary.chapterCount],
@@ -247,6 +247,7 @@ function renderProjectRestoreSummary(summary) {
 function isValidProjectBackupSummary(summary) {
   return summary && typeof summary === 'object'
     && typeof summary.originalProjectName === 'string' && summary.originalProjectName.length > 0
+    && typeof summary.backupVersion === 'string' && summary.backupVersion.length > 0
     && typeof summary.appVersion === 'string'
     && Number.isSafeInteger(summary.schemaVersion)
     && Number.isSafeInteger(summary.chapterCount) && summary.chapterCount >= 0
@@ -315,6 +316,7 @@ async function confirmProjectRestore() {
   try {
     const result = await window.api.confirmRestoreProject({ token });
     if (!result || result.success !== true || typeof result.project !== 'string' || !result.project) {
+      restoreProjectDialog.close();
       projectBackupStatus.textContent = 'ไม่สามารถกู้คืนโครงการได้ กรุณาเลือกไฟล์สำรองใหม่';
       return;
     }
@@ -322,6 +324,7 @@ async function confirmProjectRestore() {
     projectBackupStatus.textContent = `กู้คืนเป็นสำเนาใหม่ “${result.project}” เรียบร้อยแล้ว`;
     updateSavedProjectsList();
   } catch (_) {
+    restoreProjectDialog.close();
     projectBackupStatus.textContent = 'ไม่สามารถกู้คืนโครงการได้ กรุณาเลือกไฟล์สำรองใหม่';
   } finally {
     confirmRestoreProjectBtn.disabled = false;

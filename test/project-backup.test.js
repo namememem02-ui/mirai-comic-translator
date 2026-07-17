@@ -162,6 +162,7 @@ test('inspection accepts a valid archive and returns bounded summary and entries
     'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
   }));
   assert.equal(inspected.summary.originalProjectName, 'Comic');
+  assert.equal(inspected.summary.backupVersion, 'mirai-comictranslator-backup/v1');
   assert.equal(inspected.summary.chapterCount, 1);
   assert.equal(inspected.summary.imageCount, 1);
   assert.equal(inspected.summary.totalUncompressedBytes, 5);

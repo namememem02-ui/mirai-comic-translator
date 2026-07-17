@@ -65,6 +65,9 @@ test('inspection safely renders all summary fields and retains only the token', 
     assert.match(script, new RegExp(`summary\\.${field}`), `missing summary.${field}`);
   }
   assert.match(script, /formatProjectBackupBytes\(summary\.totalUncompressedBytes\)/);
+  assert.match(script, /\['รูปแบบไฟล์สำรอง', summary\.backupVersion\]/);
+  assert.match(script, /typeof summary\.backupVersion === 'string'/);
+  assert.doesNotMatch(script, /summary\.backupVersion \|\| 'ComicTranslator Backup'/);
   assert.match(body, /restoreProjectDialog\.showModal\(\)/);
 });
 
@@ -80,6 +83,13 @@ test('confirmation consumes token, refreshes projects, and never switches editor
   assert.match(body, /updateSavedProjectsList\(\)/);
   assert.doesNotMatch(body, /loadFolder\(/);
   assert.match(body, /finally\s*\{[\s\S]*confirmRestoreProjectBtn\.disabled = false;[\s\S]*cancelRestoreProjectBtn\.disabled = false;/);
+});
+
+test('confirmation failures close the consumed-token dialog before reporting the visible error', () => {
+  const body = script.match(/async function confirmProjectRestore\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+  const visibleFailure = /restoreProjectDialog\.close\(\);\s*projectBackupStatus\.textContent = 'ไม่สามารถกู้คืนโครงการได้ กรุณาเลือกไฟล์สำรองใหม่';/g;
+  assert.equal([...body.matchAll(visibleFailure)].length, 2, 'response and thrown failures must both close before status');
+  assert.match(body, /const token = pendingProjectRestoreToken;\s*pendingProjectRestoreToken = null;/);
 });
 
 test('all close paths clear tokens and partial responses use stable Thai errors', () => {
