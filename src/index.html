@@ -242,7 +242,13 @@
 
   <div id="chapterReviewOverlay" class="chapter-review-overlay review-workspace" style="display:none;">
     <header class="chapter-review-header">
-      <div><strong id="chapterReviewTitle">รีวิวรวม</strong><span id="chapterReviewCount"></span></div>
+      <div class="chapter-review-heading">
+        <div><strong id="chapterReviewTitle">รีวิวรวม</strong><span id="chapterReviewCount"></span></div>
+        <div class="chapter-review-progress">
+          <progress id="chapterReviewProgress" value="0" max="1" aria-label="ความคืบหน้าการเตรียมภาพรีวิว"></progress>
+          <span id="chapterReviewProgressText">ยังไม่ได้เริ่ม</span>
+        </div>
+      </div>
       <div class="chapter-review-controls review-toolbar">
         <button class="review-width active" data-width="fit">พอดีกว้าง</button>
         <button class="review-width" data-width="50">50%</button>

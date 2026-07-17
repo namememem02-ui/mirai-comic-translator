@@ -53,6 +53,8 @@ const chapterReviewScroll = document.getElementById('chapterReviewScroll');
 const chapterReviewColumn = document.getElementById('chapterReviewColumn');
 const reviewPageSelector = document.getElementById('reviewPageSelector');
 const chapterReviewCount = document.getElementById('chapterReviewCount');
+const chapterReviewProgress = document.getElementById('chapterReviewProgress');
+const chapterReviewProgressText = document.getElementById('chapterReviewProgressText');
 const copyPreviousPageBtn = document.getElementById('copyPreviousPageBtn');
 const copyPreviousPageDialog = document.getElementById('copyPreviousPageDialog');
 const copyPreviousSourcePage = document.getElementById('copyPreviousSourcePage');
@@ -2880,6 +2882,8 @@ let reviewToken = null;
 let reviewSelected = new Set();
 let reviewTranslations = new Map();
 let reviewCache = new Map();
+const reviewFinished = new Set();
+const reviewPending = new Set();
 let reviewSettings = window.ReviewController.normalizeReviewSettings({});
 
 async function composeReviewPage(imgObj, translation) {
@@ -2963,45 +2967,98 @@ function renderReviewSelector() {
   });
 }
 
+function updateReviewProgress() {
+  const progress = window.ReviewController.getReviewProgress(
+    [...reviewSelected], reviewCache, reviewFinished
+  );
+  chapterReviewProgress.max = Math.max(1, progress.max);
+  chapterReviewProgress.value = progress.value;
+  chapterReviewProgress.classList.toggle('complete', progress.complete && progress.max > 0);
+  chapterReviewProgressText.textContent = progress.label;
+}
+
+function showCachedReviewPage(pageElement, index, dataUrl) {
+  pageElement.querySelector('.review-source-preview')?.remove();
+  pageElement.querySelector('.review-translated-preview')?.remove();
+  pageElement.querySelector('.review-page-state')?.remove();
+  const image = document.createElement('img');
+  image.className = 'review-translated-preview';
+  image.src = dataUrl;
+  image.title = 'คลิกเพื่อกลับไปแก้หน้านี้';
+  image.addEventListener('load', () => {
+    if (image.naturalWidth && image.naturalHeight) {
+      pageElement.style.aspectRatio = `${image.naturalWidth} / ${image.naturalHeight}`;
+    }
+  });
+  image.addEventListener('click', () => openEditorPageFromReview(index));
+  pageElement.appendChild(image);
+  pageElement.dataset.status = 'done';
+}
+
+function encodeReviewPreview(canvas) {
+  const size = window.ReviewController.calculateReviewPreviewSize(canvas.width, canvas.height);
+  const previewCanvas = document.createElement('canvas');
+  previewCanvas.width = size.width;
+  previewCanvas.height = size.height;
+  previewCanvas.getContext('2d').drawImage(canvas, 0, 0, size.width, size.height);
+  const dataUrl = previewCanvas.toDataURL('image/jpeg', 0.92);
+  previewCanvas.width = 1;
+  previewCanvas.height = 1;
+  return dataUrl;
+}
+
 function enqueueReviewPage(pageElement) {
   if (pageElement.dataset.status !== 'idle') return;
-  pageElement.dataset.status = 'queued';
   const index = Number(pageElement.dataset.index);
+  const cached = reviewCache.get(index);
+  if (cached) {
+    if (pageElement.dataset.visible === 'true') showCachedReviewPage(pageElement, index, cached);
+    updateReviewProgress();
+    return;
+  }
+  if (reviewPending.has(index)) return;
+  reviewPending.add(index);
+  pageElement.dataset.status = 'queued';
   const token = reviewToken;
   reviewQueue.add(async () => {
     if (!reviewSession.isCurrent(token)) return;
-    const cached = reviewCache.get(index);
-    let dataUrl = cached;
-    if (!dataUrl) {
-      const canvas = await composeReviewPage(images[index], reviewTranslations.get(index));
-      pageElement.style.aspectRatio = `${canvas.width} / ${canvas.height}`;
-      dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      canvas.width = 1;
-      canvas.height = 1;
-    }
-    if (!reviewSession.isCurrent(token) || !pageElement.isConnected || pageElement.dataset.visible !== 'true') {
-      pageElement.dataset.status = 'idle';
-      return;
-    }
+    const canvas = await composeReviewPage(images[index], reviewTranslations.get(index));
+    const dataUrl = encodeReviewPreview(canvas);
+    canvas.width = 1;
+    canvas.height = 1;
+    if (!reviewSession.isCurrent(token)) return;
     reviewCache.set(index, dataUrl);
-    const image = document.createElement('img');
-    image.src = dataUrl;
-    image.title = 'คลิกเพื่อกลับไปแก้หน้านี้';
-    image.addEventListener('click', () => openEditorPageFromReview(index));
-    pageElement.querySelector('.review-source-preview')?.remove();
-    pageElement.querySelector('.review-page-state').remove();
-    pageElement.appendChild(image);
-    pageElement.dataset.status = 'done';
+    reviewPending.delete(index);
+    const currentPage = chapterReviewColumn.querySelector(`.review-page[data-index="${index}"]`);
+    if (currentPage?.dataset.visible === 'true') {
+      showCachedReviewPage(currentPage, index, dataUrl);
+    } else {
+      if (currentPage) currentPage.dataset.status = 'idle';
+    }
+    updateReviewProgress();
   }).catch(err => {
-    if (!reviewSession.isCurrent(token) || !pageElement.isConnected) return;
-    pageElement.dataset.status = 'idle';
-    const state = pageElement.querySelector('.review-page-state');
+    if (!reviewSession.isCurrent(token)) return;
+    reviewPending.delete(index);
+    reviewFinished.add(index);
+    updateReviewProgress();
+    const currentPage = chapterReviewColumn.querySelector(`.review-page[data-index="${index}"]`);
+    if (!currentPage) return;
+    currentPage.dataset.status = 'idle';
+    const state = currentPage.querySelector('.review-page-state');
     state.innerHTML = '';
     const retry = document.createElement('button');
     retry.textContent = 'โหลดไม่สำเร็จ — ลองใหม่';
-    retry.addEventListener('click', () => enqueueReviewPage(pageElement));
+    retry.addEventListener('click', () => {
+      reviewFinished.delete(index);
+      updateReviewProgress();
+      enqueueReviewPage(currentPage);
+    });
     state.appendChild(retry);
   });
+}
+
+function enqueueSelectedReviewPages() {
+  chapterReviewColumn.querySelectorAll('.review-page').forEach(page => enqueueReviewPage(page));
 }
 
 function buildReviewPages() {
@@ -3009,6 +3066,7 @@ function buildReviewPages() {
   chapterReviewColumn.innerHTML = '';
   const selectedIndices = [...reviewSelected].sort((a, b) => a - b);
   chapterReviewCount.textContent = `${selectedIndices.length} / ${images.length} หน้า`;
+  updateReviewProgress();
   selectedIndices.forEach(index => {
     const page = document.createElement('section');
     page.className = 'review-page';
@@ -3045,9 +3103,7 @@ function buildReviewPages() {
         entry.target.dataset.visible = 'false';
       }
       if (!entry.isIntersecting && entry.target.dataset.status === 'done') {
-        const index = Number(entry.target.dataset.index);
-        entry.target.querySelector('img')?.remove();
-        reviewCache.delete(index);
+        entry.target.querySelector('.review-translated-preview')?.remove();
         entry.target.dataset.status = 'idle';
         const state = document.createElement('div');
         state.className = 'review-page-state';
@@ -3058,6 +3114,7 @@ function buildReviewPages() {
   }, { root: chapterReviewScroll, rootMargin: '1200px 0px' });
   chapterReviewColumn.querySelectorAll('.review-page').forEach(page => reviewObserver.observe(page));
   renderReviewSelector();
+  enqueueSelectedReviewPages();
 }
 
 async function openChapterReview() {
@@ -3069,6 +3126,7 @@ async function openChapterReview() {
   reviewQueue = window.ReviewController.createTaskQueue(2);
   reviewSelected = new Set(images.map((_, index) => index));
   reviewCache = new Map();
+  reviewFinished.clear();
   const translations = await window.ReviewController.loadReviewTranslations(images, image =>
     window.api.loadPageTranslation({
       project: currentProject, chapter: currentChapter, pageName: image.name,
@@ -3086,6 +3144,8 @@ function closeChapterReview() {
   reviewObserver = null;
   reviewQueue = null;
   reviewCache.clear();
+  reviewFinished.clear();
+  reviewPending.clear();
   chapterReviewColumn.querySelectorAll('img').forEach(image => { image.src = ''; });
   chapterReviewColumn.innerHTML = '';
   chapterReviewOverlay.style.display = 'none';
