@@ -64,8 +64,14 @@ function harness(overrides = {}) {
 
 test('backup cancellation is structured and performs no write', async () => {
   const h = harness();
+  let inventoryBuilds = 0;
+  let archiveBuilds = 0;
+  h.deps.backup.buildProjectInventory = () => { inventoryBuilds += 1; throw new Error('must not scan'); };
+  h.deps.backup.createProjectBackupBuffer = async () => { archiveBuilds += 1; throw new Error('must not build'); };
   assert.deepEqual(await h.handlers.backupProject(null, { project: 'Alpha' }), { canceled: true });
   assert.equal(h.files.size, 0);
+  assert.equal(inventoryBuilds, 0);
+  assert.equal(archiveBuilds, 0);
 });
 
 test('backup safely rejects null and primitive renderer payloads', async () => {
@@ -209,6 +215,48 @@ test('failed destination promotion rolls the old ZIP back and cleans siblings', 
   assert.equal((await h.handlers.backupProject(null, { project: 'Alpha' })).code, 'BACKUP_FAILED');
   assert.equal(h.files.get(destination).toString(), 'old');
   assert.deepEqual([...h.files.keys()].filter(file => /\.tmp$|\.bak$/.test(file)), []);
+});
+
+test('successful promotion uses unlink fallback when removing the old backup fails', async () => {
+  const destination = 'C:\\documents\\Alpha.zip';
+  const h = harness({ dialog: { showSaveDialog: async () => ({ canceled: false, filePath: destination }) } });
+  h.files.set(destination, Buffer.from('old'));
+  h.deps.fs.renameSync = (from, to) => {
+    if (h.files.has(to)) throw new Error('destination exists');
+    h.files.set(to, h.files.get(from)); h.files.delete(from);
+  };
+  h.deps.fs.rmSync = file => {
+    if (file.endsWith('.bak')) throw new Error('rm cleanup failed');
+    h.files.delete(file);
+  };
+  h.deps.fs.unlinkSync = file => h.files.delete(file);
+  const result = await h.handlers.backupProject(null, { project: 'Alpha' });
+  assert.equal(result.success, true);
+  assert.equal(h.files.get(destination).toString(), 'archive');
+  assert.deepEqual([...h.files.keys()].filter(file => /\.tmp$|\.bak$/.test(file)), []);
+});
+
+test('cleanup failure after successful promotion preserves new and old ZIPs with a safe warning', async () => {
+  const destination = 'C:\\documents\\Alpha.zip';
+  const h = harness({ dialog: { showSaveDialog: async () => ({ canceled: false, filePath: destination }) } });
+  h.files.set(destination, Buffer.from('old'));
+  h.deps.fs.renameSync = (from, to) => {
+    if (h.files.has(to)) throw new Error('destination exists');
+    h.files.set(to, h.files.get(from)); h.files.delete(from);
+  };
+  h.deps.fs.rmSync = file => {
+    if (file.endsWith('.bak')) throw new Error(`private cleanup ${file}`);
+    h.files.delete(file);
+  };
+  h.deps.fs.unlinkSync = file => { throw new Error(`private unlink ${file}`); };
+  const result = await h.handlers.backupProject(null, { project: 'Alpha' });
+  assert.equal(result.success, true);
+  assert.deepEqual(result.warnings, [{ code: 'OLD_BACKUP_CLEANUP_FAILED' }]);
+  assert.equal(h.files.get(destination).toString(), 'archive');
+  const backupFiles = [...h.files.keys()].filter(file => file.endsWith('.bak'));
+  assert.equal(backupFiles.length, 1);
+  assert.equal(h.files.get(backupFiles[0]).toString(), 'old');
+  assert.doesNotMatch(JSON.stringify(result.warnings), /private|documents|Alpha\.zip/);
 });
 
 test('confirm re-inspects and safely handles restore or atomic map-write failures', async () => {
