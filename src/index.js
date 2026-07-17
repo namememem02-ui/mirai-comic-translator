@@ -3058,14 +3058,12 @@ async function openChapterReview() {
   reviewQueue = window.ReviewController.createTaskQueue(2);
   reviewSelected = new Set(images.map((_, index) => index));
   reviewCache = new Map();
-  const translations = new Map();
-  reviewTranslations = translations;
-  await Promise.all(images.map(async (image, index) => {
-    const data = await window.api.loadPageTranslation({
+  const translations = await window.ReviewController.loadReviewTranslations(images, image =>
+    window.api.loadPageTranslation({
       project: currentProject, chapter: currentChapter, pageName: image.name,
-    });
-    translations.set(index, Array.isArray(data) ? data : []);
-  }));
+    })
+  );
+  reviewTranslations = translations;
   if (!reviewSession.isCurrent(token)) return;
   buildReviewPages();
 }

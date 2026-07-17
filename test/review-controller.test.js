@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createReviewSession, createTaskQueue, normalizeReviewSettings } = require('../src/review-controller');
+const { createReviewSession, createTaskQueue, loadReviewTranslations, normalizeReviewSettings } = require('../src/review-controller');
 
 test('normalizes review display settings', () => {
   assert.deepEqual(normalizeReviewSettings({ width: 'bad', showNames: 1, showBoundaries: true }), {
@@ -34,4 +34,16 @@ test('task queue limits concurrency and continues after rejection', async () => 
   const results = await Promise.allSettled([task(), task(true), task(), task()]);
   assert.equal(peak, 2);
   assert.deepEqual(results.map(item => item.status), ['fulfilled', 'rejected', 'fulfilled', 'fulfilled']);
+});
+
+test('review translation loading keeps other pages when one page fails', async () => {
+  const images = [{ name: '001.jpg' }, { name: '002.jpg' }, { name: '003.jpg' }];
+  const translations = await loadReviewTranslations(images, async image => {
+    if (image.name === '002.jpg') throw new Error('corrupt translation');
+    return image.name === '001.jpg' ? [{ bubble_id: 1 }] : null;
+  });
+
+  assert.deepEqual(translations.get(0), [{ bubble_id: 1 }]);
+  assert.deepEqual(translations.get(1), []);
+  assert.deepEqual(translations.get(2), []);
 });

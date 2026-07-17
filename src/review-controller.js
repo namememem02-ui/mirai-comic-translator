@@ -52,7 +52,20 @@
     };
   }
 
-  const api = { createReviewSession, createTaskQueue, normalizeReviewSettings };
+  async function loadReviewTranslations(images, loadTranslation) {
+    const translations = new Map();
+    await Promise.all(images.map(async (image, index) => {
+      try {
+        const data = await loadTranslation(image, index);
+        translations.set(index, Array.isArray(data) ? data : []);
+      } catch (error) {
+        translations.set(index, []);
+      }
+    }));
+    return translations;
+  }
+
+  const api = { createReviewSession, createTaskQueue, loadReviewTranslations, normalizeReviewSettings };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.ReviewController = api;
 })(typeof window !== 'undefined' ? window : globalThis);
