@@ -102,6 +102,32 @@ test('unsafe names and duplicate archive paths are rejected', async t => {
   await assert.rejects(createProjectBackupBuffer(inventory), /duplicate archive path/i);
 });
 
+test('archive creation rejects unsafe or non-normalized inventory paths before reading files', async t => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+  const build = () => buildProjectInventory({
+    project: 'A', projectsRoot: f.projectsRoot, projectMap: f.projectMap, appVersion: '0.1.0',
+  });
+
+  for (const archivePath of [
+    '../escape.jpg',
+    '/absolute.jpg',
+    'C:\\absolute.jpg',
+    'source\\chapter-001\\2.JPG',
+    'source/chapter-001/../2.JPG',
+    'source//chapter-001/2.JPG',
+    './source/chapter-001/2.JPG',
+  ]) {
+    const inventory = build();
+    inventory.files[0].archivePath = archivePath;
+    await assert.rejects(createProjectBackupBuffer(inventory), /invalid archive path/i, archivePath);
+  }
+
+  const inventory = build();
+  inventory.files[0].absolutePath = path.relative(process.cwd(), inventory.files[0].absolutePath);
+  await assert.rejects(createProjectBackupBuffer(inventory), /absolute source path/i);
+});
+
 test('ZIP filename is Windows-safe and always has one zip extension', () => {
   assert.equal(sanitizeZipFilename(' A:*? '), 'A.zip');
   assert.equal(sanitizeZipFilename('comic.zip.zip'), 'comic.zip');
