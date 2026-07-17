@@ -511,6 +511,34 @@ h1, h2, h3, h4, .app-title, .btn {
   gap: 12px;
 }
 
+.bubble-issue-filters {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 3px;
+  padding: 0 0 6px;
+}
+
+.bubble-issue-filters button,
+.bubble-filter-navigation button {
+  min-width: 0;
+  border: 1px solid var(--rule, #334155);
+  background: var(--surface-1, #1e293b);
+  color: var(--ink-muted, #94a3b8);
+  cursor: pointer;
+}
+
+.bubble-issue-filters button[aria-pressed="true"] {
+  border-color: var(--accent, #38bdf8);
+  background: var(--accent-quiet, rgba(56, 189, 248, 0.12));
+  color: var(--ink-strong, #f8fafc);
+}
+
+.bubble-issue-filters span { display:block; font-size:10px; font-variant-numeric:tabular-nums; }
+.bubble-filter-navigation { display:flex; align-items:center; justify-content:space-between; gap:6px; padding-bottom:6px; color:#64748b; font-size:11px; }
+.bubble-filter-navigation button { padding:3px 7px; border-radius:4px; }
+.bubble-filter-navigation button:disabled { opacity:.35; cursor:not-allowed; }
+.bubble-filter-empty { margin:0 0 8px; padding:10px; border:1px dashed #475569; color:#94a3b8; text-align:center; font-size:12px; }
+
 .bubble-editor-card {
   padding: 12px;
   border-radius: 6px;
@@ -521,6 +549,8 @@ h1, h2, h3, h4, .app-title, .btn {
   gap: 8px;
   transition: all 0.15s ease;
 }
+
+.bubble-editor-card[hidden] { display: none; }
 
 .bubble-editor-card:hover {
   border-color: rgba(255, 255, 255, 0.08);

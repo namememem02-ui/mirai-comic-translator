@@ -228,6 +228,19 @@
           <input id="bubblesSearchInput" type="text" placeholder="🔍 ค้นหาบทสนทนา..." style="width:100%; box-sizing:border-box; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:5px 28px 5px 10px; font-size:12px; outline:none; font-family:inherit;" />
           <button id="bubblesClearSearchBtn" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; color:#64748b; cursor:pointer; font-size:13px; padding:0; line-height:1; display:none;">✕</button>
         </div>
+        <div id="bubbleIssueFilters" class="bubble-issue-filters" aria-label="กรองปัญหากรอบข้อความ">
+          <button type="button" data-filter="all" aria-pressed="true">ทั้งหมด <span data-filter-count="all">0</span></button>
+          <button type="button" data-filter="overflow" aria-pressed="false">ล้น <span data-filter-count="overflow">0</span></button>
+          <button type="button" data-filter="near" aria-pressed="false">ใกล้ล้น <span data-filter-count="near">0</span></button>
+          <button type="button" data-filter="untranslated" aria-pressed="false">ยังไม่แปล <span data-filter-count="untranslated">0</span></button>
+          <button type="button" data-filter="hidden" aria-pressed="false">ซ่อน <span data-filter-count="hidden">0</span></button>
+        </div>
+        <div class="bubble-filter-navigation">
+          <button id="bubbleFilterPrevious" type="button" title="ผลลัพธ์ก่อนหน้า">← ก่อนหน้า</button>
+          <span id="bubbleFilterResultCount">0 ผลลัพธ์</span>
+          <button id="bubbleFilterNext" type="button" title="ผลลัพธ์ถัดไป">ถัดไป →</button>
+        </div>
+        <div id="bubbleFilterEmpty" class="bubble-filter-empty" hidden>ไม่พบกรอบที่ตรงกับตัวกรองและคำค้นหา</div>
         <div id="bubblesList" class="bubbles-list">
           <div class="no-bubbles-placeholder">
             <p>ยังไม่มีข้อมูลคำแปลหน้านี้</p>

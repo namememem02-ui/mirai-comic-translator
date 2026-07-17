@@ -801,51 +801,81 @@ if (resetPageBtn) {
 
 const bubblesSearchInput = document.getElementById('bubblesSearchInput');
 const bubblesClearSearchBtn = document.getElementById('bubblesClearSearchBtn');
+const bubbleIssueFilters = document.getElementById('bubbleIssueFilters');
+const bubbleFilterPrevious = document.getElementById('bubbleFilterPrevious');
+const bubbleFilterNext = document.getElementById('bubbleFilterNext');
+const bubbleFilterResultCount = document.getElementById('bubbleFilterResultCount');
+const bubbleFilterEmpty = document.getElementById('bubbleFilterEmpty');
+let activeBubbleIssueFilter = 'all';
 
-function applyBubbleSearch(query) {
-  const q = query.trim().toLowerCase();
-  const cards = bubblesList.querySelectorAll('.bubble-card');
+function applyBubbleListFilters() {
+  const query = (bubblesSearchInput?.value || '').trim().toLowerCase();
+  const cards = bubblesList.querySelectorAll('.bubble-editor-card');
   let visibleCount = 0;
   cards.forEach(card => {
-    if (!q) {
-      card.style.display = '';
-      visibleCount++;
-      return;
-    }
     const id = card.getAttribute('data-id');
     const bubble = activePageTranslation.find(b => String(b.bubble_id) === id);
-    if (!bubble) { card.style.display = 'none'; return; }
+    if (!bubble) { card.hidden = true; return; }
+    const warning = liveOverflowWarnings.get(bubble.bubble_id);
     const haystack = ((bubble.original_text || '') + ' ' + (bubble.translated_text || '')).toLowerCase();
-    if (haystack.includes(q)) {
-      card.style.display = '';
-      visibleCount++;
-    } else {
-      card.style.display = 'none';
-    }
+    const visible = haystack.includes(query)
+      && window.BubbleIssueFilter.matchesBubbleFilter(bubble, warning, activeBubbleIssueFilter);
+    card.hidden = !visible;
+    if (visible) visibleCount += 1;
   });
-  // Show/hide clear button
-  if (bubblesClearSearchBtn) {
-    bubblesClearSearchBtn.style.display = q ? 'block' : 'none';
-  }
-  // Update count badge
+  if (bubblesClearSearchBtn) bubblesClearSearchBtn.style.display = query ? 'block' : 'none';
   const badge = document.getElementById('bubblesCountBadge');
-  if (badge) {
-    badge.textContent = q
-      ? `${visibleCount}/${activePageTranslation.length} บอลลูน`
-      : `${activePageTranslation.length} บอลลูน`;
-  }
+  if (badge) badge.textContent = `${visibleCount}/${activePageTranslation.length} บอลลูน`;
+  bubbleFilterResultCount.textContent = `${visibleCount} ผลลัพธ์`;
+  bubbleFilterEmpty.hidden = visibleCount > 0 || activePageTranslation.length === 0;
+  bubbleFilterPrevious.disabled = visibleCount === 0;
+  bubbleFilterNext.disabled = visibleCount === 0;
+}
+
+function refreshBubbleIssueFilters() {
+  const counts = window.BubbleIssueFilter.countBubbleIssues(activePageTranslation, liveOverflowWarnings);
+  bubbleIssueFilters.querySelectorAll('button[data-filter]').forEach(button => {
+    const filter = button.dataset.filter;
+    button.setAttribute('aria-pressed', String(filter === activeBubbleIssueFilter));
+    const count = button.querySelector(`[data-filter-count="${filter}"]`);
+    if (count) count.textContent = counts[filter] || 0;
+  });
+  applyBubbleListFilters();
+}
+
+function navigateBubbleFilterResult(direction) {
+  const visibleIds = [...bubblesList.querySelectorAll('.bubble-editor-card:not([hidden])')]
+    .map(card => Number(card.dataset.id));
+  if (!visibleIds.length) return;
+  const focusedCard = document.activeElement?.closest?.('.bubble-editor-card');
+  const currentId = Number(focusedCard?.dataset.id);
+  let currentIndex = visibleIds.indexOf(currentId);
+  if (currentIndex < 0) currentIndex = direction > 0 ? -1 : 0;
+  const nextIndex = (currentIndex + direction + visibleIds.length) % visibleIds.length;
+  const bubbleId = visibleIds[nextIndex];
+  highlightCard(bubbleId);
+  focusCard(bubbleId);
+  highlightOverlayRect(bubbleId);
 }
 
 if (bubblesSearchInput) {
-  bubblesSearchInput.addEventListener('input', (e) => applyBubbleSearch(e.target.value));
+  bubblesSearchInput.addEventListener('input', applyBubbleListFilters);
 }
 if (bubblesClearSearchBtn) {
   bubblesClearSearchBtn.addEventListener('click', () => {
     bubblesSearchInput.value = '';
-    applyBubbleSearch('');
+    applyBubbleListFilters();
     bubblesSearchInput.focus();
   });
 }
+bubbleIssueFilters.addEventListener('click', event => {
+  const button = event.target.closest('button[data-filter]');
+  if (!button) return;
+  activeBubbleIssueFilter = button.dataset.filter;
+  refreshBubbleIssueFilters();
+});
+bubbleFilterPrevious.addEventListener('click', () => navigateBubbleFilterResult(-1));
+bubbleFilterNext.addEventListener('click', () => navigateBubbleFilterResult(1));
 
 // ==========================================================
 // Phase 5 Batch B: B5 — Project Stats (page progress badge)
@@ -1569,6 +1599,7 @@ function updateLiveOverflowWarning(bubble) {
     || !activeImage.naturalWidth || !activeImage.naturalHeight) {
     liveOverflowWarnings.delete(bubble.bubble_id);
     applyLiveOverflowWarning(bubble.bubble_id);
+    refreshBubbleIssueFilters();
     return;
   }
   const [ymin, xmin, ymax, xmax] = bubble.box_2d;
@@ -1581,6 +1612,7 @@ function updateLiveOverflowWarning(bubble) {
   }, window.TextOverflow.createCanvasAdapter(liveOverflowContext));
   liveOverflowWarnings.set(bubble.bubble_id, warning);
   applyLiveOverflowWarning(bubble.bubble_id);
+  refreshBubbleIssueFilters();
 }
 
 function scanLiveOverflowWarnings() {
@@ -1600,6 +1632,7 @@ function renderPageTranslation() {
 
   if (activePageTranslation.length === 0) {
     renderPlaceholder();
+    refreshBubbleIssueFilters();
     return;
   }
 
@@ -2133,6 +2166,7 @@ function renderPageTranslation() {
   const badge = document.getElementById('bubblesCountBadge');
   if (badge) badge.textContent = `${activePageTranslation.length} บอลลูน`;
   scanLiveOverflowWarnings();
+  refreshBubbleIssueFilters();
 }
 
 
