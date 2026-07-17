@@ -34,6 +34,7 @@ function harness(overrides = {}) {
       showOpenDialog: async () => ({ canceled: true, filePaths: [] }),
     },
     fs: {
+      existsSync: file => files.has(file),
       writeFileSync: (file, data) => files.set(file, Buffer.from(data)),
       readFileSync: file => {
         if (!files.has(file)) throw new Error(`private path ${file}`);
@@ -164,6 +165,50 @@ test('confirm safely rejects null and primitive renderer payloads', async () => 
       error: 'Restore request is invalid or expired.', code: 'INVALID_RESTORE_TOKEN',
     });
   }
+});
+
+test('cancel confirmation consumes a valid token without reading or restoring', async () => {
+  const archivePath = 'C:\\secret\\cancel.zip';
+  let reads = 0;
+  let restores = 0;
+  const h = harness({ dialog: { showOpenDialog: async () => ({ canceled: false, filePaths: [archivePath] }) } });
+  h.files.set(archivePath, Buffer.from('archive'));
+  const pending = await h.handlers.inspectProjectBackup();
+  const originalRead = h.deps.fs.readFileSync;
+  h.deps.fs.readFileSync = file => { reads += 1; return originalRead(file); };
+  h.deps.backup.restoreProjectBackup = async () => { restores += 1; };
+  assert.deepEqual(await h.handlers.confirmRestoreProject(null, { token: pending.token, cancel: true }), { canceled: true });
+  assert.equal(reads, 0);
+  assert.equal(restores, 0);
+  assert.equal((await h.handlers.confirmRestoreProject(null, { token: pending.token })).code, 'INVALID_RESTORE_TOKEN');
+});
+
+test('backup atomically replaces an existing destination under Windows rename semantics', async () => {
+  const destination = 'C:\\documents\\Alpha.zip';
+  const h = harness({ dialog: { showSaveDialog: async () => ({ canceled: false, filePath: destination }) } });
+  h.files.set(destination, Buffer.from('old'));
+  h.deps.fs.renameSync = (from, to) => {
+    if (h.files.has(to)) { const error = new Error('destination exists'); error.code = 'EEXIST'; throw error; }
+    h.files.set(to, h.files.get(from)); h.files.delete(from);
+  };
+  assert.equal((await h.handlers.backupProject(null, { project: 'Alpha' })).success, true);
+  assert.equal(h.files.get(destination).toString(), 'archive');
+  assert.deepEqual([...h.files.keys()].filter(file => /\.tmp$|\.bak$/.test(file)), []);
+});
+
+test('failed destination promotion rolls the old ZIP back and cleans siblings', async () => {
+  const destination = 'C:\\documents\\Alpha.zip';
+  const h = harness({ dialog: { showSaveDialog: async () => ({ canceled: false, filePath: destination }) } });
+  h.files.set(destination, Buffer.from('old'));
+  let promotionAttempts = 0;
+  h.deps.fs.renameSync = (from, to) => {
+    if (from.endsWith('.tmp') && to === destination && ++promotionAttempts === 1) throw new Error('promotion failed');
+    if (h.files.has(to)) { const error = new Error('destination exists'); error.code = 'EEXIST'; throw error; }
+    h.files.set(to, h.files.get(from)); h.files.delete(from);
+  };
+  assert.equal((await h.handlers.backupProject(null, { project: 'Alpha' })).code, 'BACKUP_FAILED');
+  assert.equal(h.files.get(destination).toString(), 'old');
+  assert.deepEqual([...h.files.keys()].filter(file => /\.tmp$|\.bak$/.test(file)), []);
 });
 
 test('confirm re-inspects and safely handles restore or atomic map-write failures', async () => {

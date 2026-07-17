@@ -261,6 +261,7 @@ async function backupCurrentProject() {
   backupProjectBtn.disabled = true;
   restoreProjectBtn.disabled = true;
   try {
+    projectBackupStatus.textContent = 'กำลังสร้างไฟล์สำรองโครงการ…';
     const result = await window.api.backupProject({ project: currentProject });
     if (result?.canceled) return;
     if (!result || result.success !== true) {
@@ -282,6 +283,7 @@ async function inspectBackupForRestore() {
   backupProjectBtn.disabled = true;
   restoreProjectBtn.disabled = true;
   try {
+    projectBackupStatus.textContent = 'กำลังตรวจสอบไฟล์สำรอง…';
     const result = await window.api.inspectProjectBackup();
     if (result?.canceled) return;
     if (!result || typeof result.token !== 'string' || !result.token || !isValidProjectBackupSummary(result.summary)) {
@@ -314,6 +316,7 @@ async function confirmProjectRestore() {
   confirmRestoreProjectBtn.disabled = true;
   cancelRestoreProjectBtn.disabled = true;
   try {
+    projectBackupStatus.textContent = 'กำลังกู้คืนโครงการ…';
     const result = await window.api.confirmRestoreProject({ token });
     if (!result || result.success !== true || typeof result.project !== 'string' || !result.project) {
       restoreProjectDialog.close();
@@ -332,8 +335,18 @@ async function confirmProjectRestore() {
   }
 }
 
-function cancelProjectRestore() {
+function invalidatePendingProjectRestore() {
+  const token = pendingProjectRestoreToken;
   pendingProjectRestoreToken = null;
+  if (token) {
+    try {
+      Promise.resolve(window.api.confirmRestoreProject({ token, cancel: true })).catch(() => {});
+    } catch (_) {}
+  }
+}
+
+function cancelProjectRestore() {
+  invalidatePendingProjectRestore();
   if (restoreProjectDialog.open) restoreProjectDialog.close();
 }
 
@@ -346,7 +359,7 @@ restoreProjectDialog.addEventListener('cancel', event => {
   cancelProjectRestore();
 });
 restoreProjectDialog.addEventListener('close', () => {
-  pendingProjectRestoreToken = null;
+  invalidatePendingProjectRestore();
 });
 restoreProjectDialog.addEventListener('click', event => {
   if (event.target === restoreProjectDialog) cancelProjectRestore();

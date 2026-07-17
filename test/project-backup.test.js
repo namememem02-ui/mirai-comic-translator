@@ -25,6 +25,7 @@ function validManifest(overrides = {}) {
   return {
     format: 'mirai-comictranslator-backup', schemaVersion: 1, appVersion: '0.1.0',
     originalProjectName: 'Comic', createdAt: new Date().toISOString(),
+    glossary: null,
     chapters: [{ name: 'Chapter 1', id: 'chapter-001', sourceImages: ['1.png'], managedDataFiles: ['page_1.json'] }],
     totalImageCount: 1, totalUncompressedBytes: 5,
     ...overrides,
@@ -225,7 +226,34 @@ test('collision naming considers directories and map keys', t => {
   fs.mkdirSync(path.join(root, 'Comic'));
   fs.mkdirSync(path.join(root, 'Comic_สำเนา'));
   assert.equal(chooseRestoredProjectName('Comic', root, { 'Comic_สำเนา_2/C': 'x' }), 'Comic_สำเนา_3');
-  assert.equal(chooseRestoredProjectName('Fresh', root, {}), 'Fresh');
+  assert.equal(chooseRestoredProjectName('Fresh', root, {}), 'Fresh_สำเนา');
+});
+
+test('manifest explicitly declares glossary presence, path and byte count', async t => {
+  const f = fixture();
+  t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+  const inventory = buildProjectInventory({ project: 'A', projectsRoot: f.projectsRoot, projectMap: f.projectMap, appVersion: '0.1.0' });
+  const glossaryFile = inventory.files.find(file => file.archivePath === 'data/glossary.json');
+  assert.deepEqual(inventory.manifest.glossary, { path: 'data/glossary.json', byteCount: glossaryFile.size });
+
+  const noGlossaryRoot = path.join(f.projectsRoot, 'A');
+  fs.rmSync(path.join(noGlossaryRoot, 'memory.json'));
+  const without = buildProjectInventory({ project: 'A', projectsRoot: f.projectsRoot, projectMap: f.projectMap, appVersion: '0.1.0' });
+  assert.equal(without.manifest.glossary, null);
+});
+
+test('inspection rejects undeclared or incorrectly sized glossary and accepts an exact declaration', async () => {
+  const base = validManifest({ totalUncompressedBytes: 7 });
+  await assert.rejects(inspectProjectBackup(await archive(base, {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}', 'data/glossary.json': '{}',
+  })), /unexpected.*glossary/i);
+  await assert.rejects(inspectProjectBackup(await archive({ ...base, glossary: { path: 'data/glossary.json', byteCount: 3 } }, {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}', 'data/glossary.json': '{}',
+  })), /glossary.*byte/i);
+  const inspected = await inspectProjectBackup(await archive({ ...base, glossary: { path: 'data/glossary.json', byteCount: 2 } }, {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}', 'data/glossary.json': '{}',
+  }));
+  assert.equal(inspected.entries.find(entry => entry.kind === 'glossary').size, 2);
 });
 
 test('successful round trip restores multiple chapters, glossary and mappings', async t => {
@@ -237,13 +265,13 @@ test('successful round trip restores multiple chapters, glossary and mappings', 
   let written;
   const originalMap = { Existing: 'keep' };
   const result = await restoreProjectBackup({ inspected, projectsRoot: restoredRoot, projectMap: originalMap, writeProjectMap: map => { written = map; } });
-  assert.equal(result.project, 'A');
+  assert.equal(result.project, 'A_สำเนา');
   assert.equal(Object.keys(result.chapterMappings).length, 2);
   assert.equal(originalMap.Existing, 'keep');
   assert.notEqual(written, originalMap);
-  assert.equal(fs.readFileSync(path.join(restoredRoot, 'A', '_source', 'chapter-001', '2.JPG'), 'utf8'), 'two');
-  assert.ok(fs.existsSync(path.join(restoredRoot, 'A', '1', 'page_001.json')));
-  assert.ok(fs.existsSync(path.join(restoredRoot, 'A', 'memory.json')));
+  assert.equal(fs.readFileSync(path.join(restoredRoot, 'A_สำเนา', '_source', 'chapter-001', '2.JPG'), 'utf8'), 'two');
+  assert.ok(fs.existsSync(path.join(restoredRoot, 'A_สำเนา', '1', 'page_001.json')));
+  assert.ok(fs.existsSync(path.join(restoredRoot, 'A_สำเนา', 'memory.json')));
 });
 
 test('restore cleans staging on extraction failure and rolls final directory back on registration failure', async t => {
@@ -350,15 +378,15 @@ test('restore cleans staging but preserves a destination that appears before fin
   }));
   const originalAsync = inspected.entries[0].entry.async.bind(inspected.entries[0].entry);
   inspected.entries[0].entry.async = async type => {
-    fs.mkdirSync(path.join(root, 'Comic'));
-    fs.writeFileSync(path.join(root, 'Comic', 'racer.txt'), 'existing');
+    fs.mkdirSync(path.join(root, 'Comic_สำเนา'));
+    fs.writeFileSync(path.join(root, 'Comic_สำเนา', 'racer.txt'), 'existing');
     return originalAsync(type);
   };
   let mapWriteCalled = false;
   await assert.rejects(restoreProjectBackup({ inspected, projectsRoot: root, projectMap: {}, writeProjectMap() { mapWriteCalled = true; } }), /EEXIST|EPERM|exist|rename/i);
   assert.equal(mapWriteCalled, false);
-  assert.equal(fs.readFileSync(path.join(root, 'Comic', 'racer.txt'), 'utf8'), 'existing');
-  assert.deepEqual(fs.readdirSync(root), ['Comic']);
+  assert.equal(fs.readFileSync(path.join(root, 'Comic_สำเนา', 'racer.txt'), 'utf8'), 'existing');
+  assert.deepEqual(fs.readdirSync(root), ['Comic_สำเนา']);
 });
 
 test('restore creates deterministic source and managed directories for an empty chapter', async t => {
@@ -374,10 +402,10 @@ test('restore creates deterministic source and managed directories for an empty 
   const result = await restoreProjectBackup({
     inspected, projectsRoot: root, projectMap: {}, writeProjectMap(map) { writtenMap = map; },
   });
-  const sourceDirectory = path.join(root, 'Comic', '_source', 'chapter-001');
-  const managedDirectory = path.join(root, 'Comic', 'Empty Chapter');
+  const sourceDirectory = path.join(root, 'Comic_สำเนา', '_source', 'chapter-001');
+  const managedDirectory = path.join(root, 'Comic_สำเนา', 'Empty Chapter');
   assert.equal(fs.statSync(sourceDirectory).isDirectory(), true);
   assert.equal(fs.statSync(managedDirectory).isDirectory(), true);
-  assert.equal(result.chapterMappings['Comic/Empty Chapter'], sourceDirectory);
-  assert.equal(writtenMap['Comic/Empty Chapter'], sourceDirectory);
+  assert.equal(result.chapterMappings['Comic_สำเนา/Empty Chapter'], sourceDirectory);
+  assert.equal(writtenMap['Comic_สำเนา/Empty Chapter'], sourceDirectory);
 });
