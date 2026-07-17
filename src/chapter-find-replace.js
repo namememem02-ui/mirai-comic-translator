@@ -78,7 +78,71 @@
     return updates;
   }
 
-  const api = { applySelectedMatches, findChapterMatches, replaceLiteral, resultKey };
+  function clonePageMap(pageMap) {
+    return new Map([...pageMap.entries()].map(([index, bubbles]) =>
+      [index, JSON.parse(JSON.stringify(bubbles || []))]));
+  }
+
+  async function performSave(savePage, pageIndex, bubbles) {
+    const result = await savePage(pageIndex, JSON.parse(JSON.stringify(bubbles || [])));
+    if (result !== true) throw new Error(result?.error || `Save failed for page ${pageIndex}`);
+  }
+
+  async function saveReplacementBatch({ originals, updates, savePage }) {
+    const changedIndices = [];
+    try {
+      for (const [pageIndex, bubbles] of updates.entries()) {
+        await performSave(savePage, pageIndex, bubbles);
+        changedIndices.push(pageIndex);
+      }
+    } catch (error) {
+      const rollbackErrors = [];
+      for (const pageIndex of [...changedIndices].reverse()) {
+        try {
+          await performSave(savePage, pageIndex, originals.get(pageIndex));
+        } catch (rollbackError) {
+          rollbackErrors.push({ pageIndex, error: rollbackError.message || String(rollbackError) });
+        }
+      }
+      return {
+        ok: false,
+        changedIndices,
+        error: error.message || String(error),
+        rollbackErrors,
+      };
+    }
+    return {
+      ok: true,
+      changedIndices,
+      undoRecord: {
+        originals: clonePageMap(originals),
+        updates: clonePageMap(updates),
+        changedIndices: [...changedIndices],
+      },
+    };
+  }
+
+  async function undoReplacementBatch(undoRecord, savePage) {
+    const restoredIndices = [];
+    try {
+      for (const pageIndex of undoRecord?.changedIndices || []) {
+        await performSave(savePage, pageIndex, undoRecord.originals.get(pageIndex));
+        restoredIndices.push(pageIndex);
+      }
+      return { ok: true, restoredIndices };
+    } catch (error) {
+      return { ok: false, restoredIndices, error: error.message || String(error) };
+    }
+  }
+
+  const api = {
+    applySelectedMatches,
+    findChapterMatches,
+    replaceLiteral,
+    resultKey,
+    saveReplacementBatch,
+    undoReplacementBatch,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.ChapterFindReplace = api;
 })(typeof window !== 'undefined' ? window : globalThis);
