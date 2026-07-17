@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld('api', {
   getConfig: () => ipcRenderer.invoke('get-config'),
   getInpaintStatus: () => ipcRenderer.invoke('get-inpaint-status'),
   retryInpaintSidecar: () => ipcRenderer.invoke('retry-inpaint-sidecar'),
+  backupProject: (args) => ipcRenderer.invoke('backup-project', args),
+  inspectProjectBackup: () => ipcRenderer.invoke('inspect-project-backup'),
+  confirmRestoreProject: (args) => ipcRenderer.invoke('confirm-restore-project', args),
   onInpaintStatus: (callback) => {
     const listener = (_event, status) => callback(status);
     ipcRenderer.on('inpaint-status-changed', listener);

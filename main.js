@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, nativeImage } = require('electron')
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { readJsonWithRecovery, writeJsonAtomic } = require('./lib/atomic-json');
 const { buildTranslationPrompt } = require('./lib/translation-prompt');
 const { createWatermarkStore } = require('./lib/watermark-store');
@@ -9,6 +10,13 @@ const { sanitizeArchiveName, validateArchiveFiles, createArchiveBuffer } = requi
 const { createChapterQualityStore } = require('./lib/chapter-quality-store');
 const { createInpaintSidecarManager } = require('./lib/inpaint-sidecar-manager');
 const { planTranslationTiles, mergeTileResults } = require('./lib/translation-tiling');
+const {
+  buildProjectInventory,
+  createProjectBackupBuffer,
+  sanitizeZipFilename,
+  inspectProjectBackup,
+  restoreProjectBackup,
+} = require('./lib/project-backup');
 
 let mainWin = null;
 const inpaintSidecar = createInpaintSidecarManager({
@@ -28,6 +36,9 @@ const SHARED_CONFIG_DIR = path.join(
 const SHARED_CONFIG_PATH = path.join(SHARED_CONFIG_DIR, 'config.json');
 
 const PROJECTS_DIR = path.join(__dirname, 'projects');
+const RESTORE_TOKEN_TTL_MS = 5 * 60 * 1000;
+const MAX_PENDING_RESTORE_TOKENS = 8;
+const pendingRestoreTokens = new Map();
 const watermarkStore = createWatermarkStore(PROJECTS_DIR);
 const chapterQualityStore = createChapterQualityStore(PROJECTS_DIR);
 
@@ -38,6 +49,34 @@ if (!fs.existsSync(PROJECTS_DIR)) {
 
 function loadSharedConfig() {
   return readJsonWithRecovery(SHARED_CONFIG_PATH, {});
+}
+
+function structuredError(error) {
+  return { error: error instanceof Error ? error.message : String(error) };
+}
+
+function archiveFingerprint(buffer) {
+  return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+function clearExpiredRestoreTokens(now = Date.now()) {
+  for (const [token, pending] of pendingRestoreTokens) {
+    if (pending.expiresAt <= now) pendingRestoreTokens.delete(token);
+  }
+}
+
+function storeRestoreToken(filePath, fingerprint) {
+  clearExpiredRestoreTokens();
+  while (pendingRestoreTokens.size >= MAX_PENDING_RESTORE_TOKENS) {
+    pendingRestoreTokens.delete(pendingRestoreTokens.keys().next().value);
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  pendingRestoreTokens.set(token, {
+    filePath: path.resolve(filePath),
+    fingerprint,
+    expiresAt: Date.now() + RESTORE_TOKEN_TTL_MS,
+  });
+  return token;
 }
 
 function createWindow() {
@@ -79,6 +118,103 @@ app.on('window-all-closed', () => {
 
 ipcMain.handle('get-inpaint-status', () => inpaintSidecar.getStatus());
 ipcMain.handle('retry-inpaint-sidecar', () => inpaintSidecar.ensureStarted());
+
+ipcMain.handle('backup-project', async (_e, { project } = {}) => {
+  let tempPath = null;
+  try {
+    const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
+    const projectMap = readJsonWithRecovery(mapFile, {});
+    const prefix = `${project}/`;
+    if (typeof project !== 'string' || !Object.keys(projectMap).some(key => key.startsWith(prefix))) {
+      throw new Error('Project is not registered');
+    }
+    const inventory = buildProjectInventory({
+      project,
+      projectsRoot: PROJECTS_DIR,
+      projectMap,
+      appVersion: app.getVersion(),
+    });
+    const result = await dialog.showSaveDialog(mainWin, {
+      defaultPath: path.join(app.getPath('documents'), sanitizeZipFilename(`${project}-backup`)),
+      filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+    });
+    if (result.canceled || !result.filePath) return { canceled: true };
+    const archive = await createProjectBackupBuffer(inventory);
+    tempPath = `${result.filePath}.${crypto.randomBytes(8).toString('hex')}.tmp`;
+    fs.writeFileSync(tempPath, archive, { flag: 'wx' });
+    const verified = fs.readFileSync(tempPath);
+    if (!verified.equals(archive)) throw new Error('Backup verification failed');
+    fs.renameSync(tempPath, result.filePath);
+    tempPath = null;
+    const summary = {
+      project: inventory.manifest.originalProjectName,
+      chapterCount: inventory.manifest.chapters.length,
+      imageCount: inventory.manifest.totalImageCount,
+      totalUncompressedBytes: inventory.manifest.totalUncompressedBytes,
+    };
+    return { success: true, filePath: result.filePath, summary };
+  } catch (error) {
+    return structuredError(error);
+  } finally {
+    if (tempPath) fs.rmSync(tempPath, { force: true });
+  }
+});
+
+ipcMain.handle('inspect-project-backup', async () => {
+  clearExpiredRestoreTokens();
+  try {
+    const result = await dialog.showOpenDialog(mainWin, {
+      properties: ['openFile'],
+      filters: [{ name: 'ZIP archive', extensions: ['zip'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      pendingRestoreTokens.clear();
+      return { canceled: true };
+    }
+    const filePath = path.resolve(result.filePaths[0]);
+    const archive = fs.readFileSync(filePath);
+    const inspected = await inspectProjectBackup(archive);
+    const fingerprint = archiveFingerprint(archive);
+    const token = storeRestoreToken(filePath, fingerprint);
+    return { token, summary: inspected.summary };
+  } catch (error) {
+    pendingRestoreTokens.clear();
+    return structuredError(error);
+  }
+});
+
+ipcMain.handle('confirm-restore-project', async (_e, { token } = {}) => {
+  clearExpiredRestoreTokens();
+  const pending = typeof token === 'string' ? pendingRestoreTokens.get(token) : null;
+  if (!pending) {
+    pendingRestoreTokens.clear();
+    return structuredError(new Error('Invalid or expired restore token'));
+  }
+  pendingRestoreTokens.delete(token);
+  if (pending.expiresAt <= Date.now()) {
+    pendingRestoreTokens.clear();
+    return structuredError(new Error('Restore token expired'));
+  }
+  try {
+    const archive = fs.readFileSync(pending.filePath);
+    const fingerprint = archiveFingerprint(archive);
+    if (fingerprint !== pending.fingerprint) throw new Error('Backup archive changed after inspection');
+    const inspected = await inspectProjectBackup(archive);
+    const mapFile = path.join(PROJECTS_DIR, 'projects_map.json');
+    const projectMap = readJsonWithRecovery(mapFile, {});
+    const restored = await restoreProjectBackup({
+      inspected,
+      projectsRoot: PROJECTS_DIR,
+      projectMap,
+      writeProjectMap: nextMap => writeJsonAtomic(mapFile, nextMap),
+    });
+    pendingRestoreTokens.clear();
+    return { success: true, project: restored.project, chapterCount: inspected.manifest.chapters.length };
+  } catch (error) {
+    pendingRestoreTokens.clear();
+    return structuredError(error);
+  }
+});
 
 ipcMain.handle('select-folder', async () => {
   if (!mainWin || mainWin.isDestroyed()) return null;
