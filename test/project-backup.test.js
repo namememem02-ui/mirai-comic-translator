@@ -359,3 +359,24 @@ test('restore cleans staging but preserves a destination that appears before fin
   assert.equal(fs.readFileSync(path.join(root, 'Comic', 'racer.txt'), 'utf8'), 'existing');
   assert.deepEqual(fs.readdirSync(root), ['Comic']);
 });
+
+test('restore creates deterministic source and managed directories for an empty chapter', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-empty-chapter-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const manifest = validManifest({
+    chapters: [{ name: 'Empty Chapter', id: 'chapter-001', sourceImages: [], managedDataFiles: [] }],
+    totalImageCount: 0,
+    totalUncompressedBytes: 0,
+  });
+  const inspected = await inspectProjectBackup(await archive(manifest));
+  let writtenMap;
+  const result = await restoreProjectBackup({
+    inspected, projectsRoot: root, projectMap: {}, writeProjectMap(map) { writtenMap = map; },
+  });
+  const sourceDirectory = path.join(root, 'Comic', '_source', 'chapter-001');
+  const managedDirectory = path.join(root, 'Comic', 'Empty Chapter');
+  assert.equal(fs.statSync(sourceDirectory).isDirectory(), true);
+  assert.equal(fs.statSync(managedDirectory).isDirectory(), true);
+  assert.equal(result.chapterMappings['Comic/Empty Chapter'], sourceDirectory);
+  assert.equal(writtenMap['Comic/Empty Chapter'], sourceDirectory);
+});
