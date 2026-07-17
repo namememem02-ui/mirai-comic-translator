@@ -256,3 +256,106 @@ test('restore cleans staging on extraction failure and rolls final directory bac
   await assert.rejects(restoreProjectBackup({ inspected: inspected2, projectsRoot: root, projectMap: {}, writeProjectMap() { throw new Error('map failed'); } }), /map failed/);
   assert.deepEqual(fs.readdirSync(root), []);
 });
+
+test('inspection rejects non-canonical whitespace and C0, DEL, and C1 controls in names and paths', async () => {
+  for (const originalProjectName of [' Comic ', `Com\u007fic`, `Com\u0085ic`]) {
+    await assert.rejects(inspectProjectBackup(await archive(validManifest({ originalProjectName }), {
+      'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
+    })), /invalid project/i);
+  }
+  for (const name of [' Chapter 1 ', `Chap\u007fter`, `Chap\u009fter`]) {
+    const manifest = validManifest({ chapters: [{ name, id: 'chapter-001', sourceImages: ['1.png'], managedDataFiles: ['page_1.json'] }] });
+    await assert.rejects(inspectProjectBackup(await archive(manifest, {
+      'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
+    })), /invalid chapter/i);
+  }
+  for (const chapter of [
+    { name: 'Chapter 1', id: ' chapter-001 ', sourceImages: ['1.png'], managedDataFiles: ['page_1.json'] },
+    { name: 'Chapter 1', id: 'chapter-001', sourceImages: [' 1.png'], managedDataFiles: ['page_1.json'] },
+    { name: 'Chapter 1', id: 'chapter-001', sourceImages: ['1.png'], managedDataFiles: ['page_1.json '] },
+  ]) await assert.rejects(inspectProjectBackup(await archive(validManifest({ chapters: [chapter] }), {})), /invalid/i);
+  for (const badPath of [`source/chapter-001/a\u007f.png`, `source/chapter-001/a\u0080.png`]) {
+    await assert.rejects(inspectProjectBackup(await archive(validManifest(), { [badPath]: 'img' })), /archive path/i);
+  }
+});
+
+test('inspection validates custom limit shape, known keys, integer bounds, and positive ratio', async () => {
+  const buffer = await archive(validManifest(), { 'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}' });
+  for (const limits of [null, [], { unknown: 1 }, { maxEntries: 1.5 }, { maxFileBytes: -1 },
+    { maxTotalBytes: Number.MAX_SAFE_INTEGER + 1 }, { maxCompressionRatio: 0 }, { maxCompressionRatio: Infinity }]) {
+    await assert.rejects(inspectProjectBackup(buffer, limits), /invalid limit/i);
+  }
+});
+
+test('inspection rejects manifest count and declaration edge cases', async () => {
+  await assert.rejects(inspectProjectBackup(await archive(validManifest({ totalImageCount: 2 }), {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
+  })), /image count/i);
+  await assert.rejects(inspectProjectBackup(await archive(validManifest({ totalUncompressedBytes: 6 }), {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
+  })), /byte count/i);
+  const duplicateId = validManifest({ chapters: [
+    { name: 'One', id: 'chapter-001', sourceImages: [], managedDataFiles: [] },
+    { name: 'Two', id: 'chapter-001', sourceImages: [], managedDataFiles: [] },
+  ], totalImageCount: 0, totalUncompressedBytes: 0 });
+  await assert.rejects(inspectProjectBackup(await archive(duplicateId)), /duplicate chapter id/i);
+});
+
+test('collision matching treats project-map keys as a case-insensitive Windows namespace', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-case-collision-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  assert.equal(chooseRestoredProjectName('Comic', root, { 'comic/Chapter': 'x', 'COMIC_สำเนา/Chapter': 'y' }), 'Comic_สำเนา_2');
+});
+
+test('restore rejects relative projectsRoot before creating any path', async () => {
+  const relative = `relative-restore-${Date.now()}`;
+  assert.equal(fs.existsSync(relative), false);
+  await assert.rejects(restoreProjectBackup({ inspected: { manifest: validManifest(), entries: [] }, projectsRoot: relative, projectMap: {}, writeProjectMap() {} }), /projects root/i);
+  assert.equal(fs.existsSync(relative), false);
+});
+
+test('restore validates project map before creating a missing absolute root', async t => {
+  const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-invalid-map-'));
+  t.after(() => fs.rmSync(parent, { recursive: true, force: true }));
+  const missingRoot = path.join(parent, 'missing-projects');
+  await assert.rejects(restoreProjectBackup({
+    inspected: { manifest: validManifest(), entries: [] }, projectsRoot: missingRoot,
+    projectMap: null, writeProjectMap() {},
+  }), /project map/i);
+  assert.equal(fs.existsSync(missingRoot), false);
+});
+
+test('restore preserves existing projects and input map on hostile extraction failure', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-preserve-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'Comic'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'Comic', 'keep.txt'), 'keep');
+  const map = { 'Comic/Old': 'unchanged' };
+  const inspected = await inspectProjectBackup(await archive(validManifest(), {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
+  }));
+  inspected.entries[1].entry.async = async () => { throw new Error('hostile extraction'); };
+  await assert.rejects(restoreProjectBackup({ inspected, projectsRoot: root, projectMap: map, writeProjectMap() {} }), /hostile extraction/);
+  assert.equal(fs.readFileSync(path.join(root, 'Comic', 'keep.txt'), 'utf8'), 'keep');
+  assert.deepEqual(map, { 'Comic/Old': 'unchanged' });
+  assert.deepEqual(fs.readdirSync(root), ['Comic']);
+});
+
+test('restore cleans staging but preserves a destination that appears before final rename', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-rename-race-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const inspected = await inspectProjectBackup(await archive(validManifest(), {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
+  }));
+  const originalAsync = inspected.entries[0].entry.async.bind(inspected.entries[0].entry);
+  inspected.entries[0].entry.async = async type => {
+    fs.mkdirSync(path.join(root, 'Comic'));
+    fs.writeFileSync(path.join(root, 'Comic', 'racer.txt'), 'existing');
+    return originalAsync(type);
+  };
+  let mapWriteCalled = false;
+  await assert.rejects(restoreProjectBackup({ inspected, projectsRoot: root, projectMap: {}, writeProjectMap() { mapWriteCalled = true; } }), /EEXIST|EPERM|exist|rename/i);
+  assert.equal(mapWriteCalled, false);
+  assert.equal(fs.readFileSync(path.join(root, 'Comic', 'racer.txt'), 'utf8'), 'existing');
+  assert.deepEqual(fs.readdirSync(root), ['Comic']);
+});
