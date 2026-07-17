@@ -2988,6 +2988,7 @@ function enqueueReviewPage(pageElement) {
     image.src = dataUrl;
     image.title = 'คลิกเพื่อกลับไปแก้หน้านี้';
     image.addEventListener('click', () => openEditorPageFromReview(index));
+    pageElement.querySelector('.review-source-preview')?.remove();
     pageElement.querySelector('.review-page-state').remove();
     pageElement.appendChild(image);
     pageElement.dataset.status = 'done';
@@ -3018,10 +3019,20 @@ function buildReviewPages() {
     name.className = 'review-page-name';
     name.textContent = images[index].name;
     name.addEventListener('click', () => openEditorPageFromReview(index));
+    const sourcePreview = document.createElement('img');
+    sourcePreview.className = 'review-source-preview';
+    sourcePreview.addEventListener('load', () => {
+      if (sourcePreview.naturalWidth && sourcePreview.naturalHeight) {
+        page.style.aspectRatio = `${sourcePreview.naturalWidth} / ${sourcePreview.naturalHeight}`;
+      }
+    });
+    sourcePreview.src = images[index].fileUrl;
+    sourcePreview.title = 'กำลังเตรียมภาพแปล... คลิกเพื่อกลับไปแก้หน้านี้';
+    sourcePreview.addEventListener('click', () => openEditorPageFromReview(index));
     const state = document.createElement('div');
     state.className = 'review-page-state';
-    state.textContent = 'กำลังรอโหลด...';
-    page.append(name, state);
+    state.textContent = 'กำลังเตรียมภาพแปล...';
+    page.append(name, sourcePreview, state);
     chapterReviewColumn.appendChild(page);
   });
   applyReviewDisplaySettings();
