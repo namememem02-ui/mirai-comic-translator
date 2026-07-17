@@ -78,6 +78,8 @@ let watermarkDrag = null;
 let copyPreviousSourceBubbles = [];
 let copyPreviousTargetIndex = -1;
 let inlineEditorSession = null;
+const liveOverflowWarnings = new Map();
+const liveOverflowContext = document.createElement('canvas').getContext('2d');
 
 // App Settings (loaded from disk, applied globally)
 let appSettings = {
@@ -1545,6 +1547,45 @@ async function selectPage(idx) {
 }
 
 // 6. Render Page Translation & SVG Overlays
+function applyLiveOverflowWarning(bubbleId) {
+  const warning = liveOverflowWarnings.get(bubbleId);
+  const rect = bubbleOverlay.querySelector(`.bubble-rect[data-id="${bubbleId}"]`);
+  const badge = bubblesList.querySelector(`.live-overflow-badge[data-id="${bubbleId}"]`);
+  rect?.classList.remove('overflow-near', 'overflow-error');
+  if (badge) badge.hidden = true;
+  if (!warning || warning.status === 'safe') return;
+  rect?.classList.add(warning.status === 'overflow' ? 'overflow-error' : 'overflow-near');
+  if (badge) {
+    badge.hidden = false;
+    badge.classList.toggle('is-error', warning.status === 'overflow');
+    badge.textContent = warning.status === 'overflow' ? 'ข้อความล้นกรอบ' : 'ข้อความใกล้ล้น';
+  }
+}
+
+function updateLiveOverflowWarning(bubble) {
+  if (bubble.hidden || !window.ExportQuality.validBox(bubble.box_2d)
+    || !activeImage.naturalWidth || !activeImage.naturalHeight) {
+    liveOverflowWarnings.delete(bubble.bubble_id);
+    applyLiveOverflowWarning(bubble.bubble_id);
+    return;
+  }
+  const [ymin, xmin, ymax, xmax] = bubble.box_2d;
+  const boxWidth = ((xmax - xmin) / 1000) * activeImage.naturalWidth * 0.85;
+  const boxHeight = ((ymax - ymin) / 1000) * activeImage.naturalHeight * 0.85;
+  const fontSize = Number(bubble.font_size) || 6;
+  liveOverflowContext.font = `bold ${fontSize}px '${bubble.font_family || 'Sarabun'}', 'Segoe UI', sans-serif`;
+  const warning = window.TextOverflow.measureTextOverflow({
+    text: bubble.translated_text, boxWidth, boxHeight, fontSize, lineHeight: fontSize * 1.25,
+  }, window.TextOverflow.createCanvasAdapter(liveOverflowContext));
+  liveOverflowWarnings.set(bubble.bubble_id, warning);
+  applyLiveOverflowWarning(bubble.bubble_id);
+}
+
+function scanLiveOverflowWarnings() {
+  liveOverflowWarnings.clear();
+  activePageTranslation.forEach(updateLiveOverflowWarning);
+}
+
 function renderPageTranslation() {
   // Clear search filter when rendering a new page
   if (bubblesSearchInput && bubblesSearchInput.value) {
@@ -1553,6 +1594,7 @@ function renderPageTranslation() {
   }
   bubbleOverlay.innerHTML = '';
   bubblesList.innerHTML = '';
+  liveOverflowWarnings.clear();
 
   if (activePageTranslation.length === 0) {
     renderPlaceholder();
@@ -1634,6 +1676,17 @@ function renderPageTranslation() {
     idLabel.className = 'bubble-id-label';
     idLabel.textContent = `บอลลูน #${bubble.bubble_id}`;
     header.appendChild(idLabel);
+
+    const overflowBadge = document.createElement('button');
+    overflowBadge.className = 'live-overflow-badge';
+    overflowBadge.dataset.id = bubble.bubble_id;
+    overflowBadge.hidden = true;
+    overflowBadge.addEventListener('click', (event) => {
+      event.stopPropagation();
+      focusCard(bubble.bubble_id);
+      highlightOverlayRect(bubble.bubble_id);
+    });
+    header.appendChild(overflowBadge);
     
     // Show/Hide toggle button
     const hideBtn = document.createElement('button');
@@ -1700,6 +1753,7 @@ function renderPageTranslation() {
     // Auto-save on edit and update canvas preview in real-time
     transInput.addEventListener('input', (e) => {
       bubble.translated_text = e.target.value;
+      updateLiveOverflowWarning(bubble);
       saveCurrentPageTranslation();
       if (isPreviewMode) {
         refreshTypesetView();
@@ -1776,6 +1830,7 @@ function renderPageTranslation() {
         sizeSlider.value = '18';
         sizeValLabel.textContent = '18px';
       }
+      updateLiveOverflowWarning(bubble);
       saveCurrentPageTranslation();
       if (isPreviewMode) refreshTypesetView();
     });
@@ -1784,6 +1839,7 @@ function renderPageTranslation() {
       const val = parseInt(e.target.value);
       bubble.font_size = val;
       sizeValLabel.textContent = `${val}px`;
+      updateLiveOverflowWarning(bubble);
       saveCurrentPageTranslation();
       if (isPreviewMode) renderTypesetImage();
     });
@@ -2013,6 +2069,7 @@ function renderPageTranslation() {
     fontFamilySelect.addEventListener('change', (e) => {
       pushUndoState();
       bubble.font_family = e.target.value;
+      updateLiveOverflowWarning(bubble);
       saveCurrentPageTranslation();
       if (isPreviewMode) refreshTypesetView();
     });
@@ -2073,6 +2130,7 @@ function renderPageTranslation() {
   // Update badge count
   const badge = document.getElementById('bubblesCountBadge');
   if (badge) badge.textContent = `${activePageTranslation.length} บอลลูน`;
+  scanLiveOverflowWarnings();
 }
 
 
@@ -3975,6 +4033,7 @@ window.addEventListener('mousemove', (e) => {
     ];
     
     updateSVGOverlayOnly();
+    updateLiveOverflowWarning(bubble);
     if (isPreviewMode) refreshTypesetView();
   } else if (isResizing) {
     const overlayRect = bubbleOverlay.getBoundingClientRect();
@@ -3992,6 +4051,7 @@ window.addEventListener('mousemove', (e) => {
     );
     
     updateSVGOverlayOnly();
+    updateLiveOverflowWarning(bubble);
     if (isPreviewMode) refreshTypesetView();
   }
 });
