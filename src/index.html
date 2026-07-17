@@ -63,6 +63,18 @@
         <!-- Saved projects dynamically loaded here -->
       </div>
 
+      <section class="project-backup-actions" aria-labelledby="projectBackupActionsTitle">
+        <div class="project-backup-actions__heading">
+          <span id="projectBackupActionsTitle">ข้อมูลโครงการ</span>
+          <span class="project-backup-actions__meta">BACKUP / RESTORE</span>
+        </div>
+        <div class="project-backup-actions__commands">
+          <button id="backupProjectBtn" type="button" disabled>สำรองโครงการ</button>
+          <button id="restoreProjectBtn" type="button">กู้คืนสำเนา</button>
+        </div>
+        <div id="projectBackupStatus" class="project-backup-status" role="status" aria-live="polite"></div>
+      </section>
+
       <!-- Collapsible Active Chapter Pages Header -->
       <div id="projectInfo" class="project-info" style="display: none; align-items: center; justify-content: space-between; padding: 8px 12px; margin-top: 10px; background: #1e293b; border: 1px solid #334155; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; color: #f8fafc;">
         <div style="display: flex; flex-direction: column; gap: 2px;">
@@ -287,6 +299,25 @@
       </main>
     </div>
   </div>
+
+  <dialog id="restoreProjectDialog" class="project-restore-dialog" aria-labelledby="restoreProjectTitle" aria-describedby="restoreProjectNotice">
+    <header class="project-restore-header">
+      <div>
+        <span class="project-restore-kicker">PROJECT RESTORE</span>
+        <h2 id="restoreProjectTitle">ตรวจสอบไฟล์สำรอง</h2>
+      </div>
+    </header>
+    <section id="restoreProjectSummary" class="project-restore-summary" aria-label="รายละเอียดไฟล์สำรอง">
+      <dl></dl>
+    </section>
+    <p id="restoreProjectNotice" class="project-restore-notice">
+      การกู้คืนจะสร้างสำเนาใหม่เสมอ และไม่เขียนทับงานหรือโครงการเดิม
+    </p>
+    <footer class="dialog-actions project-restore-actions">
+      <button id="cancelRestoreProjectBtn" type="button">ยกเลิก</button>
+      <button id="confirmRestoreProjectBtn" type="button" class="btn btn-primary">สร้างสำเนาที่กู้คืน</button>
+    </footer>
+  </dialog>
 
   <dialog id="chapterFindReplaceDialog" class="chapter-find-replace-dialog">
     <header class="find-replace-header">

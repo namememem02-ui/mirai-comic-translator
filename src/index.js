@@ -77,6 +77,13 @@ const findReplaceApply = document.getElementById('findReplaceApply');
 const findReplaceUndo = document.getElementById('findReplaceUndo');
 const findReplaceStatus = document.getElementById('findReplaceStatus');
 const closeFindReplaceBtn = document.getElementById('closeFindReplaceBtn');
+const backupProjectBtn = document.getElementById('backupProjectBtn');
+const restoreProjectBtn = document.getElementById('restoreProjectBtn');
+const projectBackupStatus = document.getElementById('projectBackupStatus');
+const restoreProjectDialog = document.getElementById('restoreProjectDialog');
+const restoreProjectSummary = document.getElementById('restoreProjectSummary');
+const confirmRestoreProjectBtn = document.getElementById('confirmRestoreProjectBtn');
+const cancelRestoreProjectBtn = document.getElementById('cancelRestoreProjectBtn');
 
 // App State
 let currentProject = '';
@@ -98,6 +105,7 @@ let findReplacePages = [];
 let findReplaceMatches = [];
 let findReplaceSelected = new Set();
 let lastChapterReplaceUndo = null;
+let pendingProjectRestoreToken = null;
 const liveOverflowWarnings = new Map();
 const liveOverflowContext = document.createElement('canvas').getContext('2d');
 
@@ -201,6 +209,145 @@ async function initApp() {
 }
 
 initApp();
+
+function formatProjectBackupBytes(value) {
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value < 1024) return `${value} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let amount = value;
+  let unitIndex = -1;
+  do {
+    amount /= 1024;
+    unitIndex += 1;
+  } while (amount >= 1024 && unitIndex < units.length - 1);
+  return `${new Intl.NumberFormat('th-TH', { maximumFractionDigits: 1 }).format(amount)} ${units[unitIndex]}`;
+}
+
+function renderProjectRestoreSummary(summary) {
+  const fields = [
+    ['โครงการต้นฉบับ', summary.originalProjectName],
+    ['รูปแบบไฟล์สำรอง', summary.backupVersion || 'ComicTranslator Backup'],
+    ['เวอร์ชันแอป', summary.appVersion],
+    ['เวอร์ชันโครงสร้าง', summary.schemaVersion],
+    ['จำนวนตอน', summary.chapterCount],
+    ['จำนวนภาพ', summary.imageCount],
+    ['ขนาดข้อมูล', formatProjectBackupBytes(summary.totalUncompressedBytes)],
+  ];
+  const list = document.createElement('dl');
+  fields.forEach(([label, value]) => {
+    const term = document.createElement('dt');
+    const detail = document.createElement('dd');
+    term.textContent = label;
+    detail.textContent = String(value);
+    list.append(term, detail);
+  });
+  restoreProjectSummary.replaceChildren(list);
+}
+
+function isValidProjectBackupSummary(summary) {
+  return summary && typeof summary === 'object'
+    && typeof summary.originalProjectName === 'string' && summary.originalProjectName.length > 0
+    && typeof summary.appVersion === 'string'
+    && Number.isSafeInteger(summary.schemaVersion)
+    && Number.isSafeInteger(summary.chapterCount) && summary.chapterCount >= 0
+    && Number.isSafeInteger(summary.imageCount) && summary.imageCount >= 0
+    && Number.isSafeInteger(summary.totalUncompressedBytes) && summary.totalUncompressedBytes >= 0;
+}
+
+async function backupCurrentProject() {
+  if (!currentProject) return;
+  projectBackupStatus.textContent = '';
+  backupProjectBtn.disabled = true;
+  restoreProjectBtn.disabled = true;
+  try {
+    const result = await window.api.backupProject({ project: currentProject });
+    if (result?.canceled) return;
+    if (!result || result.success !== true) {
+      projectBackupStatus.textContent = 'ไม่สามารถสำรองโครงการได้ กรุณาลองอีกครั้ง';
+      return;
+    }
+    projectBackupStatus.textContent = `สำรองโครงการ ${currentProject} เรียบร้อยแล้ว`;
+  } catch (_) {
+    projectBackupStatus.textContent = 'ไม่สามารถสำรองโครงการได้ กรุณาลองอีกครั้ง';
+  } finally {
+    backupProjectBtn.disabled = !currentProject;
+    restoreProjectBtn.disabled = false;
+  }
+}
+
+async function inspectBackupForRestore() {
+  projectBackupStatus.textContent = '';
+  pendingProjectRestoreToken = null;
+  backupProjectBtn.disabled = true;
+  restoreProjectBtn.disabled = true;
+  try {
+    const result = await window.api.inspectProjectBackup();
+    if (result?.canceled) return;
+    if (!result || typeof result.token !== 'string' || !result.token || !isValidProjectBackupSummary(result.summary)) {
+      projectBackupStatus.textContent = result?.error
+        ? 'ไม่สามารถตรวจสอบไฟล์สำรองได้ กรุณาลองอีกครั้ง'
+        : 'ข้อมูลไฟล์สำรองไม่สมบูรณ์ กรุณาเลือกไฟล์ใหม่';
+      return;
+    }
+    const summary = result.summary;
+    pendingProjectRestoreToken = result.token;
+    renderProjectRestoreSummary(summary);
+    restoreProjectDialog.showModal();
+  } catch (_) {
+    pendingProjectRestoreToken = null;
+    projectBackupStatus.textContent = 'ไม่สามารถตรวจสอบไฟล์สำรองได้ กรุณาลองอีกครั้ง';
+  } finally {
+    backupProjectBtn.disabled = !currentProject;
+    restoreProjectBtn.disabled = false;
+  }
+}
+
+async function confirmProjectRestore() {
+  const token = pendingProjectRestoreToken;
+  pendingProjectRestoreToken = null;
+  if (!token) {
+    projectBackupStatus.textContent = 'คำขอกู้คืนหมดอายุ กรุณาเลือกไฟล์สำรองใหม่';
+    restoreProjectDialog.close();
+    return;
+  }
+  confirmRestoreProjectBtn.disabled = true;
+  cancelRestoreProjectBtn.disabled = true;
+  try {
+    const result = await window.api.confirmRestoreProject({ token });
+    if (!result || result.success !== true || typeof result.project !== 'string' || !result.project) {
+      projectBackupStatus.textContent = 'ไม่สามารถกู้คืนโครงการได้ กรุณาเลือกไฟล์สำรองใหม่';
+      return;
+    }
+    restoreProjectDialog.close();
+    projectBackupStatus.textContent = `กู้คืนเป็นสำเนาใหม่ “${result.project}” เรียบร้อยแล้ว`;
+    updateSavedProjectsList();
+  } catch (_) {
+    projectBackupStatus.textContent = 'ไม่สามารถกู้คืนโครงการได้ กรุณาเลือกไฟล์สำรองใหม่';
+  } finally {
+    confirmRestoreProjectBtn.disabled = false;
+    cancelRestoreProjectBtn.disabled = false;
+  }
+}
+
+function cancelProjectRestore() {
+  pendingProjectRestoreToken = null;
+  if (restoreProjectDialog.open) restoreProjectDialog.close();
+}
+
+backupProjectBtn.addEventListener('click', backupCurrentProject);
+restoreProjectBtn.addEventListener('click', inspectBackupForRestore);
+confirmRestoreProjectBtn.addEventListener('click', confirmProjectRestore);
+cancelRestoreProjectBtn.addEventListener('click', cancelProjectRestore);
+restoreProjectDialog.addEventListener('cancel', event => {
+  event.preventDefault();
+  cancelProjectRestore();
+});
+restoreProjectDialog.addEventListener('close', () => {
+  pendingProjectRestoreToken = null;
+});
+restoreProjectDialog.addEventListener('click', event => {
+  if (event.target === restoreProjectDialog) cancelProjectRestore();
+});
 
 // ==========================================================
 // Phase 5: Settings Dialog
@@ -1219,6 +1366,7 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   currentProject = res.project;
   currentChapter = res.chapter;
   images = res.images;
+  backupProjectBtn.disabled = false;
   lastChapterReplaceUndo = null;
   findReplaceUndo.disabled = true;
   invalidateChapterFindReplacePreview();

@@ -209,6 +209,147 @@ h1, h2, h3, h4, .app-title, .btn {
   border-radius: 6px;
 }
 
+.project-backup-actions {
+  margin: 10px 12px 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+}
+
+.project-backup-actions__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.project-backup-actions__meta,
+.project-restore-kicker {
+  color: var(--ink-muted);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .12em;
+}
+
+.project-backup-actions__commands {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--rule);
+}
+
+.project-backup-actions button,
+.project-restore-dialog button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 0;
+  background: var(--surface-2);
+  color: var(--ink-strong);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.project-backup-actions button:hover:not(:disabled),
+.project-restore-dialog button:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.project-backup-actions button:focus-visible,
+.project-restore-dialog button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.project-backup-actions button:disabled,
+.project-restore-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.project-backup-status {
+  min-height: 28px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.project-restore-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--ink-strong);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+}
+
+.project-restore-dialog::backdrop {
+  background: rgba(2, 6, 23, .82);
+}
+
+.project-restore-header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.project-restore-header h2 {
+  margin: 4px 0 0;
+  font-size: 18px;
+}
+
+.project-restore-summary {
+  padding: 16px 20px;
+}
+
+.project-restore-summary dl {
+  display: grid;
+  grid-template-columns: minmax(130px, .8fr) minmax(0, 1.2fr);
+  margin: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.project-restore-summary dt,
+.project-restore-summary dd {
+  margin: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 12px;
+}
+
+.project-restore-summary dt { color: var(--ink-muted); }
+.project-restore-summary dd { font-weight: 600; overflow-wrap: anywhere; }
+
+.project-restore-notice {
+  margin: 0 20px 16px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.project-restore-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1px;
+  padding: 0;
+  border-top: 1px solid var(--rule);
+  background: var(--rule);
+}
+
+.project-restore-actions button { padding: 8px 16px; }
+
 .info-row {
   display: flex;
   font-size: 12px;
@@ -1251,6 +1392,12 @@ textarea:focus-visible,
 }
 
 @media (max-width: 719px) {
+  .project-backup-actions__commands { grid-template-columns: 1fr; }
+  .project-restore-summary dl { grid-template-columns: 1fr; }
+  .project-restore-summary dt { padding-bottom: 2px; border-bottom: 0; }
+  .project-restore-summary dd { padding-top: 0; }
+  .project-restore-actions { flex-direction: column-reverse; }
+  .project-restore-actions button { width: 100%; }
   .app-header { align-items: flex-start; gap: var(--space-2); flex-wrap: wrap; }
   .workspace-shell {
     display: flex;
