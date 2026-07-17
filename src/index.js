@@ -26,6 +26,7 @@ const translateAllBtn = document.getElementById('translateAllBtn');
 const previewToggleBtn = document.getElementById('previewToggleBtn');
 const exportChapterBtn = document.getElementById('exportChapterBtn');
 const chapterReviewBtn = document.getElementById('chapterReviewBtn');
+const chapterFindReplaceBtn = document.getElementById('chapterFindReplaceBtn');
 const viewportContainer = document.getElementById('viewportContainer');
 const inlineTranslationEditor = document.getElementById('inlineTranslationEditor');
 const inlineEditorStatus = document.getElementById('inlineEditorStatus');
@@ -63,6 +64,19 @@ const copyPreviousMode = document.getElementById('copyPreviousMode');
 const copyPreviousWarning = document.getElementById('copyPreviousWarning');
 const cancelCopyPreviousBtn = document.getElementById('cancelCopyPreviousBtn');
 const confirmCopyPreviousBtn = document.getElementById('confirmCopyPreviousBtn');
+const chapterFindReplaceDialog = document.getElementById('chapterFindReplaceDialog');
+const findReplaceSearch = document.getElementById('findReplaceSearch');
+const findReplaceReplacement = document.getElementById('findReplaceReplacement');
+const findReplaceWholeWord = document.getElementById('findReplaceWholeWord');
+const findReplaceRun = document.getElementById('findReplaceRun');
+const findReplaceSelectAll = document.getElementById('findReplaceSelectAll');
+const findReplaceSelectNone = document.getElementById('findReplaceSelectNone');
+const findReplaceResults = document.getElementById('findReplaceResults');
+const findReplaceSummary = document.getElementById('findReplaceSummary');
+const findReplaceApply = document.getElementById('findReplaceApply');
+const findReplaceUndo = document.getElementById('findReplaceUndo');
+const findReplaceStatus = document.getElementById('findReplaceStatus');
+const closeFindReplaceBtn = document.getElementById('closeFindReplaceBtn');
 
 // App State
 let currentProject = '';
@@ -80,6 +94,10 @@ let watermarkDrag = null;
 let copyPreviousSourceBubbles = [];
 let copyPreviousTargetIndex = -1;
 let inlineEditorSession = null;
+let findReplacePages = [];
+let findReplaceMatches = [];
+let findReplaceSelected = new Set();
+let lastChapterReplaceUndo = null;
 const liveOverflowWarnings = new Map();
 const liveOverflowContext = document.createElement('canvas').getContext('2d');
 
@@ -1201,6 +1219,9 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   currentProject = res.project;
   currentChapter = res.chapter;
   images = res.images;
+  lastChapterReplaceUndo = null;
+  findReplaceUndo.disabled = true;
+  invalidateChapterFindReplacePreview();
 
   // Refresh saved projects list
   updateSavedProjectsList();
@@ -1212,6 +1233,7 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   previewToggleBtn.disabled = false;
   exportChapterBtn.disabled = false;
   chapterReviewBtn.disabled = false;
+  chapterFindReplaceBtn.disabled = false;
 
   // Load Glossary memory
   projectGlossary = await window.api.loadMemory({ project: currentProject });
@@ -1570,6 +1592,7 @@ async function selectPage(idx) {
   previewToggleBtn.disabled = false;
   exportChapterBtn.disabled = false;
   chapterReviewBtn.disabled = false;
+  chapterFindReplaceBtn.disabled = false;
   copyPreviousPageBtn.disabled = activeIndex <= 0;
   if (resetPageBtn) resetPageBtn.style.display = 'inline-flex';
   // Clear undo/redo stacks when switching page
@@ -2904,6 +2927,242 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
   
   return await res.blob();
 }
+
+// ==========================================================
+// Chapter-wide find and replace
+// ==========================================================
+
+function updateFindReplaceSelectionSummary() {
+  const selectedMatches = findReplaceMatches.filter(match =>
+    findReplaceSelected.has(window.ChapterFindReplace.resultKey(match.pageIndex, match.bubbleId)));
+  const selectedPages = new Set(selectedMatches.map(match => match.pageIndex)).size;
+  findReplaceSummary.textContent = findReplaceMatches.length
+    ? `เลือก ${selectedMatches.length} กล่อง จาก ${findReplaceMatches.length} กล่อง (${selectedPages} หน้า)`
+    : 'ไม่พบข้อความที่ตรงกัน';
+  findReplaceApply.disabled = selectedMatches.length === 0;
+}
+
+function invalidateChapterFindReplacePreview() {
+  findReplacePages = [];
+  findReplaceMatches = [];
+  findReplaceSelected = new Set();
+  findReplaceResults.innerHTML = '<div class="find-replace-empty">กด “ค้นหาทั้งตอน” เพื่อดูรายการก่อนแทนที่</div>';
+  findReplaceSummary.textContent = 'ยังไม่ได้ค้นหา';
+  findReplaceStatus.textContent = '';
+  findReplaceApply.disabled = true;
+}
+
+function renderChapterFindReplaceResults() {
+  findReplaceResults.innerHTML = '';
+  if (!findReplaceMatches.length) {
+    findReplaceResults.innerHTML = '<div class="find-replace-empty">ไม่พบข้อความที่ตรงกันในคำแปลของตอนนี้</div>';
+    updateFindReplaceSelectionSummary();
+    return;
+  }
+
+  const grouped = new Map();
+  findReplaceMatches.forEach(match => {
+    if (!grouped.has(match.pageIndex)) grouped.set(match.pageIndex, []);
+    grouped.get(match.pageIndex).push(match);
+  });
+
+  grouped.forEach((matches, pageIndex) => {
+    const page = document.createElement('section');
+    page.className = 'find-replace-page';
+    const heading = document.createElement('h3');
+    heading.textContent = `หน้า ${pageIndex + 1} — ${matches[0].pageName}`;
+    page.appendChild(heading);
+
+    matches.forEach(match => {
+      const key = window.ChapterFindReplace.resultKey(match.pageIndex, match.bubbleId);
+      const row = document.createElement('article');
+      row.className = 'find-replace-result';
+
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = findReplaceSelected.has(key);
+      checkbox.setAttribute('aria-label', `เลือกกล่อง ${match.bubbleId}`);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) findReplaceSelected.add(key);
+        else findReplaceSelected.delete(key);
+        updateFindReplaceSelectionSummary();
+      });
+
+      const comparison = document.createElement('div');
+      comparison.className = 'find-replace-copy';
+      const before = document.createElement('div');
+      before.className = 'find-replace-before';
+      before.textContent = match.before;
+      const after = document.createElement('div');
+      after.className = 'find-replace-after';
+      after.textContent = match.after;
+      comparison.append(before, after);
+
+      const open = document.createElement('button');
+      open.type = 'button';
+      open.textContent = `ไปแก้กล่องนี้ (${match.occurrenceCount} จุด)`;
+      open.addEventListener('click', () => openFindReplaceResult(match.pageIndex, match.bubbleId));
+      row.append(checkbox, comparison, open);
+      page.appendChild(row);
+    });
+    findReplaceResults.appendChild(page);
+  });
+  updateFindReplaceSelectionSummary();
+}
+
+async function runChapterFindReplaceSearch() {
+  const search = findReplaceSearch.value;
+  if (!search.trim()) {
+    findReplaceStatus.textContent = 'กรุณากรอกข้อความที่ต้องการค้นหา';
+    findReplaceSearch.focus();
+    return;
+  }
+  findReplaceRun.disabled = true;
+  findReplaceApply.disabled = true;
+  const pages = [];
+  let failedPages = 0;
+  for (let pageIndex = 0; pageIndex < images.length; pageIndex += 1) {
+    findReplaceStatus.textContent = `กำลังค้นหา ${pageIndex + 1}/${images.length} หน้า…`;
+    let bubbles = [];
+    try {
+      const loaded = await window.api.loadPageTranslation({
+        project: currentProject, chapter: currentChapter, pageName: images[pageIndex].name,
+      });
+      bubbles = Array.isArray(loaded) ? loaded : [];
+    } catch (error) {
+      failedPages += 1;
+    }
+    pages.push({ pageIndex, pageName: images[pageIndex].name, bubbles });
+  }
+  findReplacePages = pages;
+  findReplaceMatches = window.ChapterFindReplace.findChapterMatches(
+    pages, search, findReplaceReplacement.value, findReplaceWholeWord.checked);
+  findReplaceSelected = new Set(findReplaceMatches.map(match =>
+    window.ChapterFindReplace.resultKey(match.pageIndex, match.bubbleId)));
+  renderChapterFindReplaceResults();
+  findReplaceStatus.textContent = failedPages
+    ? `ค้นหาเสร็จ แต่เปิดข้อมูลไม่ได้ ${failedPages} หน้า (ข้ามหน้านั้นแล้ว)`
+    : `ค้นหาเสร็จ ${images.length} หน้า`;
+  findReplaceRun.disabled = false;
+}
+
+function saveFindReplacePage(pageIndex, translationData) {
+  return window.api.savePageTranslation({
+    project: currentProject,
+    chapter: currentChapter,
+    pageName: images[pageIndex].name,
+    translationData,
+  });
+}
+
+async function synchronizeFindReplacePages(indices) {
+  const uniqueIndices = [...new Set(indices)];
+  uniqueIndices.forEach(pageIndex => {
+    if (!images[pageIndex]) return;
+    delete cleanedBgCache[images[pageIndex].name];
+    reviewCache.delete(pageIndex);
+  });
+  renderThumbnails();
+  await updateProjectStats();
+  if (uniqueIndices.includes(activeIndex)) await selectPage(activeIndex);
+}
+
+async function applyChapterFindReplace() {
+  const selectedMatches = findReplaceMatches.filter(match =>
+    findReplaceSelected.has(window.ChapterFindReplace.resultKey(match.pageIndex, match.bubbleId)));
+  if (!selectedMatches.length) return;
+  const pageCount = new Set(selectedMatches.map(match => match.pageIndex)).size;
+  if (!confirm(`แทนที่ ${selectedMatches.length} กล่อง ใน ${pageCount} หน้า ใช่หรือไม่?`)) return;
+
+  findReplaceApply.disabled = true;
+  findReplaceRun.disabled = true;
+  findReplaceStatus.textContent = 'กำลังบันทึกการแทนที่…';
+  const updates = window.ChapterFindReplace.applySelectedMatches(
+    findReplacePages, findReplaceMatches, findReplaceSelected);
+  const originals = new Map([...updates.keys()].map(pageIndex => {
+    const page = findReplacePages.find(item => item.pageIndex === pageIndex);
+    return [pageIndex, JSON.parse(JSON.stringify(page?.bubbles || []))];
+  }));
+  const result = await window.ChapterFindReplace.saveReplacementBatch({
+    originals, updates, savePage: saveFindReplacePage,
+  });
+
+  if (!result.ok) {
+    const rollbackNote = result.rollbackErrors?.length
+      ? `; ย้อนคืนไม่สำเร็จ ${result.rollbackErrors.length} หน้า`
+      : '';
+    findReplaceStatus.textContent = `บันทึกไม่สำเร็จ: ${result.error}${rollbackNote}`;
+    findReplaceApply.disabled = false;
+    findReplaceRun.disabled = false;
+    await synchronizeFindReplacePages(result.changedIndices || []);
+    return;
+  }
+
+  lastChapterReplaceUndo = result.undoRecord;
+  findReplaceUndo.disabled = false;
+  result.changedIndices.forEach(pageIndex => {
+    const page = findReplacePages.find(item => item.pageIndex === pageIndex);
+    if (page) page.bubbles = updates.get(pageIndex);
+  });
+  findReplaceStatus.textContent = `แทนที่สำเร็จ ${selectedMatches.length} กล่อง ใน ${pageCount} หน้า`;
+  findReplaceSelected = new Set();
+  updateFindReplaceSelectionSummary();
+  findReplaceRun.disabled = false;
+  await synchronizeFindReplacePages(result.changedIndices);
+}
+
+async function undoLastChapterReplace() {
+  if (!lastChapterReplaceUndo) return;
+  if (!confirm('ย้อนกลับการแทนที่ทั้งตอนครั้งล่าสุดใช่หรือไม่?')) return;
+  findReplaceUndo.disabled = true;
+  findReplaceStatus.textContent = 'กำลังย้อนกลับ…';
+  const result = await window.ChapterFindReplace.undoReplacementBatch(
+    lastChapterReplaceUndo, saveFindReplacePage);
+  if (!result.ok) {
+    findReplaceStatus.textContent = `ย้อนกลับไม่สำเร็จ: ${result.error}`;
+    findReplaceUndo.disabled = false;
+    await synchronizeFindReplacePages(result.restoredIndices || []);
+    return;
+  }
+  const restoredIndices = result.restoredIndices;
+  lastChapterReplaceUndo = null;
+  findReplaceUndo.disabled = true;
+  invalidateChapterFindReplacePreview();
+  findReplaceStatus.textContent = `ย้อนกลับสำเร็จ ${restoredIndices.length} หน้า`;
+  await synchronizeFindReplacePages(restoredIndices);
+}
+
+async function openFindReplaceResult(pageIndex, bubbleId) {
+  chapterFindReplaceDialog.close();
+  await selectPage(pageIndex);
+  requestAnimationFrame(() => {
+    highlightCard(bubbleId);
+    focusCard(bubbleId);
+    highlightOverlayRect(bubbleId);
+  });
+}
+
+chapterFindReplaceBtn.addEventListener('click', () => {
+  if (!images.length) return;
+  if (chapterReviewOverlay.style.display === 'flex') closeChapterReview();
+  chapterFindReplaceDialog.showModal();
+  findReplaceSearch.focus();
+});
+closeFindReplaceBtn.addEventListener('click', () => chapterFindReplaceDialog.close());
+findReplaceRun.addEventListener('click', runChapterFindReplaceSearch);
+findReplaceSelectAll.addEventListener('click', () => {
+  findReplaceSelected = new Set(findReplaceMatches.map(match =>
+    window.ChapterFindReplace.resultKey(match.pageIndex, match.bubbleId)));
+  renderChapterFindReplaceResults();
+});
+findReplaceSelectNone.addEventListener('click', () => {
+  findReplaceSelected = new Set();
+  renderChapterFindReplaceResults();
+});
+findReplaceApply.addEventListener('click', applyChapterFindReplace);
+findReplaceUndo.addEventListener('click', undoLastChapterReplace);
+[findReplaceSearch, findReplaceReplacement, findReplaceWholeWord].forEach(control =>
+  control.addEventListener('input', invalidateChapterFindReplacePreview));
 
 // ==========================================================
 // Continuous Chapter Review

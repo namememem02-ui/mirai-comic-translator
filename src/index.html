@@ -108,6 +108,7 @@
             👁️ ดูหน้าแปลไทย
           </button>
           <button id="chapterReviewBtn" class="btn btn-secondary" disabled>📖 รีวิวรวม</button>
+          <button id="chapterFindReplaceBtn" class="btn btn-secondary" disabled>⌕ ค้นหา/แทนที่ทั้งตอน</button>
           <button id="exportChapterBtn" class="btn btn-success" disabled>
             💾 ส่งออกการ์ตูนไทย
           </button>
@@ -286,6 +287,41 @@
       </main>
     </div>
   </div>
+
+  <dialog id="chapterFindReplaceDialog" class="chapter-find-replace-dialog">
+    <header class="find-replace-header">
+      <div>
+        <span class="find-replace-kicker">CHAPTER TEXT TOOLS</span>
+        <h2>ค้นหาและแทนที่ทั้งตอน</h2>
+      </div>
+      <button id="closeFindReplaceBtn" type="button">✕ ปิด</button>
+    </header>
+    <section class="find-replace-controls">
+      <label>ค้นหาในคำแปลไทย
+        <input id="findReplaceSearch" type="text" autocomplete="off" placeholder="ข้อความที่ต้องการค้นหา">
+      </label>
+      <label>แทนที่ด้วย
+        <input id="findReplaceReplacement" type="text" autocomplete="off" placeholder="เว้นว่างเพื่อลบข้อความที่พบ">
+      </label>
+      <label class="find-replace-whole-word"><input id="findReplaceWholeWord" type="checkbox" checked> ตรงทั้งคำ</label>
+      <button id="findReplaceRun" type="button">ค้นหาทั้งตอน</button>
+    </section>
+    <section class="find-replace-actions">
+      <div>
+        <button id="findReplaceSelectAll" type="button">เลือกทั้งหมด</button>
+        <button id="findReplaceSelectNone" type="button">ไม่เลือก</button>
+      </div>
+      <strong id="findReplaceSummary">ยังไม่ได้ค้นหา</strong>
+      <div>
+        <button id="findReplaceUndo" type="button" disabled>↶ ย้อนกลับการแทนที่ล่าสุด</button>
+        <button id="findReplaceApply" type="button" disabled>แทนที่รายการที่เลือก</button>
+      </div>
+    </section>
+    <div id="findReplaceStatus" class="find-replace-status" role="status"></div>
+    <main id="findReplaceResults" class="find-replace-results">
+      <div class="find-replace-empty">กรอกข้อความแล้วกด “ค้นหาทั้งตอน”</div>
+    </main>
+  </dialog>
 
   <!-- Settings Dialog Modal -->
   <dialog id="settingsDialog" class="settings-surface" style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:0; color:#f8fafc; width:520px; max-width:95vw; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
