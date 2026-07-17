@@ -9,7 +9,27 @@ const {
   buildProjectInventory,
   createProjectBackupBuffer,
   sanitizeZipFilename,
+  inspectProjectBackup,
+  chooseRestoredProjectName,
+  restoreProjectBackup,
 } = require('../lib/project-backup');
+
+async function archive(manifest, files = {}, options = {}) {
+  const zip = new JSZip();
+  zip.file('manifest.json', JSON.stringify(manifest));
+  for (const [name, value] of Object.entries(files)) zip.file(name, value, options[name] || {});
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', platform: 'UNIX' });
+}
+
+function validManifest(overrides = {}) {
+  return {
+    format: 'mirai-comictranslator-backup', schemaVersion: 1, appVersion: '0.1.0',
+    originalProjectName: 'Comic', createdAt: new Date().toISOString(),
+    chapters: [{ name: 'Chapter 1', id: 'chapter-001', sourceImages: ['1.png'], managedDataFiles: ['page_1.json'] }],
+    totalImageCount: 1, totalUncompressedBytes: 5,
+    ...overrides,
+  };
+}
 
 function fixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-backup-'));
@@ -134,4 +154,105 @@ test('ZIP filename is Windows-safe and always has one zip extension', () => {
   assert.equal(sanitizeZipFilename('comic.zip. '), 'comic.zip');
   assert.equal(sanitizeZipFilename('...   '), 'backup.zip');
   assert.equal(sanitizeZipFilename('CON'), 'backup.zip');
+});
+
+test('inspection accepts a valid archive and returns bounded summary and entries', async () => {
+  const manifest = validManifest();
+  const inspected = await inspectProjectBackup(await archive(manifest, {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}',
+  }));
+  assert.equal(inspected.summary.originalProjectName, 'Comic');
+  assert.equal(inspected.summary.chapterCount, 1);
+  assert.equal(inspected.summary.imageCount, 1);
+  assert.equal(inspected.summary.totalUncompressedBytes, 5);
+  assert.deepEqual(inspected.entries.map(entry => entry.path).sort(), ['data/chapter-001/page_1.json', 'source/chapter-001/1.png']);
+});
+
+test('inspection rejects unsafe, undeclared, duplicate and conflicting paths', async () => {
+  const manifest = validManifest();
+  for (const bad of ['../x', '/x', 'C:/x', '\\\\server/share', 'source\\chapter-001\\1.png', 'source//x']) {
+    await assert.rejects(inspectProjectBackup(await archive(manifest, { [bad]: 'x' })), /archive path|unexpected|invalid/i, bad);
+  }
+  await assert.rejects(inspectProjectBackup(await archive(manifest, {
+    'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}', 'extra.txt': 'x',
+  })), /unexpected/i);
+  const duplicateZip = new JSZip();
+  duplicateZip.file('manifest.json', JSON.stringify(manifest));
+  duplicateZip.file('source/chapter-001/1.png', 'a');
+  duplicateZip.file('SOURCE/chapter-001/1.png', 'b');
+  duplicateZip.file('data/chapter-001/page_1.json', '{}');
+  await assert.rejects(inspectProjectBackup(await duplicateZip.generateAsync({ type: 'nodebuffer' })), /duplicate/i);
+  const conflict = validManifest({ chapters: [{ name: 'C', id: 'chapter-001', sourceImages: ['x'], managedDataFiles: [] }], totalImageCount: 1, totalUncompressedBytes: 1 });
+  const conflictZip = new JSZip();
+  conflictZip.file('manifest.json', JSON.stringify(conflict));
+  conflictZip.file('source/chapter-001', 'x');
+  conflictZip.file('source/chapter-001/x', 'x');
+  await assert.rejects(inspectProjectBackup(await conflictZip.generateAsync({ type: 'nodebuffer' })), /conflict|unexpected/i);
+});
+
+test('inspection rejects format, schema, missing declarations and invalid names/types', async () => {
+  for (const overrides of [{ format: 'other' }, { schemaVersion: 2 }]) {
+    await assert.rejects(inspectProjectBackup(await archive(validManifest(overrides), {})), /format|schema/i);
+  }
+  await assert.rejects(inspectProjectBackup(await archive(validManifest(), { 'source/chapter-001/1.png': 'img' })), /missing/i);
+  for (const chapters of [
+    [{ name: '../bad', id: 'chapter-001', sourceImages: ['1.png'], managedDataFiles: [] }],
+    [{ name: 'C', id: 'chapter-001', sourceImages: ['1.exe'], managedDataFiles: [] }],
+    [{ name: 'C', id: 'chapter-001', sourceImages: [], managedDataFiles: ['evil.exe'] }],
+    [{ name: 'C', id: 'chapter-001', sourceImages: [], managedDataFiles: [] }, { name: 'c', id: 'chapter-002', sourceImages: [], managedDataFiles: [] }],
+  ]) await assert.rejects(inspectProjectBackup(await archive(validManifest({ chapters }), {})), /invalid|duplicate|image|managed/i);
+  const symlink = new JSZip();
+  symlink.file('manifest.json', JSON.stringify(validManifest({ chapters: [], totalImageCount: 0, totalUncompressedBytes: 0 })));
+  symlink.file('link', 'target', { unixPermissions: 0o120777 });
+  await assert.rejects(inspectProjectBackup(await symlink.generateAsync({ type: 'nodebuffer', platform: 'UNIX' })), /symlink|unexpected|type/i);
+});
+
+test('inspection enforces entry, per-file, total and compression-ratio limits', async () => {
+  const empty = validManifest({ chapters: [], totalImageCount: 0, totalUncompressedBytes: 0 });
+  await assert.rejects(inspectProjectBackup(await archive(empty), { maxEntries: 0 }), /entry/i);
+  const manifest = validManifest({ chapters: [{ name: 'C', id: 'chapter-001', sourceImages: ['1.png'], managedDataFiles: [] }], totalImageCount: 1, totalUncompressedBytes: 3 });
+  const buf = await archive(manifest, { 'source/chapter-001/1.png': 'abc' });
+  await assert.rejects(inspectProjectBackup(buf, { maxFileBytes: 2 }), /file|size/i);
+  await assert.rejects(inspectProjectBackup(buf, { maxTotalBytes: 2 }), /total/i);
+  const bomb = await archive(validManifest({ chapters: [{ name: 'C', id: 'chapter-001', sourceImages: ['1.png'], managedDataFiles: [] }], totalImageCount: 1, totalUncompressedBytes: 10000 }), { 'source/chapter-001/1.png': 'x'.repeat(10000) });
+  await assert.rejects(inspectProjectBackup(bomb, { maxCompressionRatio: 2 }), /compression ratio/i);
+});
+
+test('collision naming considers directories and map keys', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-restore-name-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, 'Comic'));
+  fs.mkdirSync(path.join(root, 'Comic_สำเนา'));
+  assert.equal(chooseRestoredProjectName('Comic', root, { 'Comic_สำเนา_2/C': 'x' }), 'Comic_สำเนา_3');
+  assert.equal(chooseRestoredProjectName('Fresh', root, {}), 'Fresh');
+});
+
+test('successful round trip restores multiple chapters, glossary and mappings', async t => {
+  const f = fixture();
+  const restoredRoot = path.join(f.root, 'restored'); fs.mkdirSync(restoredRoot);
+  t.after(() => fs.rmSync(f.root, { recursive: true, force: true }));
+  const inventory = buildProjectInventory({ project: 'A', projectsRoot: f.projectsRoot, projectMap: f.projectMap, appVersion: '0.1.0' });
+  const inspected = await inspectProjectBackup(await createProjectBackupBuffer(inventory));
+  let written;
+  const originalMap = { Existing: 'keep' };
+  const result = await restoreProjectBackup({ inspected, projectsRoot: restoredRoot, projectMap: originalMap, writeProjectMap: map => { written = map; } });
+  assert.equal(result.project, 'A');
+  assert.equal(Object.keys(result.chapterMappings).length, 2);
+  assert.equal(originalMap.Existing, 'keep');
+  assert.notEqual(written, originalMap);
+  assert.equal(fs.readFileSync(path.join(restoredRoot, 'A', '_source', 'chapter-001', '2.JPG'), 'utf8'), 'two');
+  assert.ok(fs.existsSync(path.join(restoredRoot, 'A', '1', 'page_001.json')));
+  assert.ok(fs.existsSync(path.join(restoredRoot, 'A', 'memory.json')));
+});
+
+test('restore cleans staging on extraction failure and rolls final directory back on registration failure', async t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ct-restore-fail-')); t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const manifest = validManifest();
+  const inspected = await inspectProjectBackup(await archive(manifest, { 'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}' }));
+  inspected.entries[0].entry.async = async () => { throw new Error('extract failed'); };
+  await assert.rejects(restoreProjectBackup({ inspected, projectsRoot: root, projectMap: {}, writeProjectMap() {} }), /extract failed/);
+  assert.deepEqual(fs.readdirSync(root), []);
+  const inspected2 = await inspectProjectBackup(await archive(manifest, { 'source/chapter-001/1.png': 'img', 'data/chapter-001/page_1.json': '{}' }));
+  await assert.rejects(restoreProjectBackup({ inspected: inspected2, projectsRoot: root, projectMap: {}, writeProjectMap() { throw new Error('map failed'); } }), /map failed/);
+  assert.deepEqual(fs.readdirSync(root), []);
 });
