@@ -67,6 +67,15 @@ test('backup cancellation is structured and performs no write', async () => {
   assert.equal(h.files.size, 0);
 });
 
+test('backup safely rejects null and primitive renderer payloads', async () => {
+  const h = harness();
+  for (const payload of [null, 42, 'Alpha', true]) {
+    assert.deepEqual(await h.handlers.backupProject(null, payload), {
+      error: 'Project backup failed.', code: 'BACKUP_FAILED',
+    });
+  }
+});
+
 test('backup validates registration and promotes a verified sibling temp file', async () => {
   const target = 'C:\\exports\\Alpha-backup.zip';
   const h = harness({ dialog: { showSaveDialog: async () => ({ canceled: false, filePath: target }) } });
@@ -146,6 +155,15 @@ test('confirm rejects expired, replayed, and tampered tokens without leaking pat
   const result = await h.handlers.confirmRestoreProject(null, { token: tampered.token });
   assert.deepEqual(result, { error: 'Project restore failed.', code: 'RESTORE_FAILED' });
   assert.doesNotMatch(JSON.stringify(result), /secret|restore\.zip/);
+});
+
+test('confirm safely rejects null and primitive renderer payloads', async () => {
+  const h = harness();
+  for (const payload of [null, 42, 'token-1', true]) {
+    assert.deepEqual(await h.handlers.confirmRestoreProject(null, payload), {
+      error: 'Restore request is invalid or expired.', code: 'INVALID_RESTORE_TOKEN',
+    });
+  }
 });
 
 test('confirm re-inspects and safely handles restore or atomic map-write failures', async () => {
