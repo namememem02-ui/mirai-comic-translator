@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createReviewSession, createTaskQueue, loadReviewTranslations, normalizeReviewSettings } = require('../src/review-controller');
+const {
+  calculateReviewPreviewSize,
+  createReviewSession,
+  createTaskQueue,
+  getReviewProgress,
+  loadReviewTranslations,
+  normalizeReviewSettings,
+} = require('../src/review-controller');
 
 test('normalizes review display settings', () => {
   assert.deepEqual(normalizeReviewSettings({ width: 'bad', showNames: 1, showBoundaries: true }), {
@@ -46,4 +53,22 @@ test('review translation loading keeps other pages when one page fails', async (
   assert.deepEqual(translations.get(0), [{ bubble_id: 1 }]);
   assert.deepEqual(translations.get(1), []);
   assert.deepEqual(translations.get(2), []);
+});
+
+test('review preview sizing limits width without enlarging smaller pages', () => {
+  assert.deepEqual(calculateReviewPreviewSize(2400, 6000), { width: 1600, height: 4000 });
+  assert.deepEqual(calculateReviewPreviewSize(1200, 3000), { width: 1200, height: 3000 });
+});
+
+test('review progress reports empty partial and complete states', () => {
+  const cache = new Map([[0, 'preview']]);
+  assert.deepEqual(getReviewProgress([], cache, new Set()), {
+    value: 0, max: 0, label: 'ไม่มีหน้าที่เลือก', complete: true,
+  });
+  assert.deepEqual(getReviewProgress([0, 1, 2], cache, new Set()), {
+    value: 1, max: 3, label: 'กำลังเตรียมภาพแปล 1/3 หน้า', complete: false,
+  });
+  assert.deepEqual(getReviewProgress([0, 1, 2], cache, new Set([1, 2])), {
+    value: 3, max: 3, label: 'พร้อมรีวิว 3/3 หน้า', complete: true,
+  });
 });

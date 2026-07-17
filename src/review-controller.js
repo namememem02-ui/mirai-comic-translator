@@ -65,7 +65,39 @@
     return translations;
   }
 
-  const api = { createReviewSession, createTaskQueue, loadReviewTranslations, normalizeReviewSettings };
+  function calculateReviewPreviewSize(width, height, maxWidth = 1600) {
+    const sourceWidth = Math.max(1, Math.round(Number(width) || 1));
+    const sourceHeight = Math.max(1, Math.round(Number(height) || 1));
+    const limit = Math.max(1, Math.round(Number(maxWidth) || 1600));
+    if (sourceWidth <= limit) return { width: sourceWidth, height: sourceHeight };
+    return {
+      width: limit,
+      height: Math.max(1, Math.round(sourceHeight * (limit / sourceWidth))),
+    };
+  }
+
+  function getReviewProgress(selectedIndices, cache, finishedIndices) {
+    const selected = Array.from(selectedIndices || []);
+    const max = selected.length;
+    if (!max) return { value: 0, max: 0, label: 'ไม่มีหน้าที่เลือก', complete: true };
+    const value = selected.filter(index => cache?.has(index) || finishedIndices?.has(index)).length;
+    const complete = value >= max;
+    return {
+      value,
+      max,
+      label: complete ? `พร้อมรีวิว ${max}/${max} หน้า` : `กำลังเตรียมภาพแปล ${value}/${max} หน้า`,
+      complete,
+    };
+  }
+
+  const api = {
+    calculateReviewPreviewSize,
+    createReviewSession,
+    createTaskQueue,
+    getReviewProgress,
+    loadReviewTranslations,
+    normalizeReviewSettings,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.ReviewController = api;
 })(typeof window !== 'undefined' ? window : globalThis);
