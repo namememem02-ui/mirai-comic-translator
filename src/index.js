@@ -7,6 +7,9 @@ window.addEventListener('unhandledrejection', (e) => {
   alert(`Renderer Unhandled Rejection: ${errorMsg}`);
 });
 
+const meeARaiBrandController = window.MeeARaiBrand.initMeeARaiBrand(document);
+window.addEventListener('beforeunload', () => meeARaiBrandController.destroy(), { once: true });
+
 // UI Elements
 const dropZone = document.getElementById('dropZone');
 const folderInput = document.getElementById('folderInput');

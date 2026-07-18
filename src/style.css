@@ -1110,6 +1110,8 @@ dialog[open] {
   --space-6: 32px;
   --radius-sm: 4px;
   --radius-md: 8px;
+  --brand-purple: #a78bfa;
+  --brand-purple-quiet: rgba(139, 92, 246, 0.16);
 }
 
 body {
@@ -1131,7 +1133,13 @@ h1, h2, h3, h4, .app-title, .btn {
   backdrop-filter: none;
 }
 
-.logo-area { gap: var(--space-2); }
+.logo-area {
+  flex: 1 1 360px;
+  min-width: 0;
+  max-width: 460px;
+  overflow: hidden;
+  gap: var(--space-2);
+}
 .emblem { font-size: 19px; filter: none; }
 .app-title {
   color: var(--ink-strong);
@@ -1145,6 +1153,108 @@ h1, h2, h3, h4, .app-title, .btn {
   background: transparent;
   border-color: var(--rule);
   border-radius: var(--radius-sm);
+}
+
+/* Mee-a-rai brand: the M remains the only interactive, fixed-size trigger. */
+.mee-a-rai-brand {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 360px;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink-strong);
+}
+
+.mee-a-rai-brand__mark {
+  display: flex;
+  width: 39px;
+  flex-basis: 39px;
+  flex-shrink: 0;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  transition: width 150ms ease, flex-basis 150ms ease;
+}
+
+.mee-a-rai-brand.is-expanded .mee-a-rai-brand__mark {
+  width: 166px;
+  flex-basis: 166px;
+}
+
+.mee-a-rai-brand__trigger {
+  width: 39px;
+  min-width: 39px;
+  min-height: 39px !important;
+  height: 39px;
+  flex: 0 0 39px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: var(--radius-sm) !important;
+  background: transparent !important;
+  color: var(--brand-purple) !important;
+  font: 700 22px/1 'Outfit', 'Sarabun', sans-serif;
+  touch-action: manipulation;
+}
+
+.mee-a-rai-brand__trigger:hover:not(:disabled) {
+  color: #c4b5fd !important;
+  background: var(--brand-purple-quiet) !important;
+}
+
+.mee-a-rai-brand__trigger:focus-visible {
+  outline: 2px solid var(--brand-purple);
+  outline-offset: -3px;
+}
+
+.mee-a-rai-brand__initial {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+}
+
+.mee-a-rai-brand__extension {
+  width: 127px;
+  flex: 0 0 127px;
+  overflow: hidden;
+  color: var(--brand-purple);
+  font: 700 19px/1 'Outfit', 'Sarabun', sans-serif;
+  letter-spacing: -0.02em;
+  opacity: 0;
+  transform: translateX(-7px);
+  transition: opacity 110ms ease, transform 150ms ease;
+  pointer-events: none;
+}
+
+.mee-a-rai-brand.is-expanded .mee-a-rai-brand__extension {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.mee-a-rai-brand__divider {
+  flex: 0 0 auto;
+  color: var(--rule-strong);
+}
+
+.mee-a-rai-brand .app-title {
+  flex: 1 1 auto;
+  min-width: 8ch;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-header__controls {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: calc(100% - 280px);
+  align-items: center;
+  gap: var(--space-3);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
 }
 .key-status {
   background: transparent;
@@ -1399,6 +1509,8 @@ textarea:focus-visible,
   .project-restore-actions { flex-direction: column-reverse; }
   .project-restore-actions button { width: 100%; }
   .app-header { align-items: flex-start; gap: var(--space-2); flex-wrap: wrap; }
+  .logo-area { width: 100%; max-width: none; }
+  .app-header__controls { width: 100%; max-width: none; }
   .workspace-shell {
     display: flex;
     flex-direction: column;
@@ -1419,6 +1531,9 @@ textarea:focus-visible,
     transition-duration: 0.01ms !important;
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+  }
+  .mee-a-rai-brand__extension {
+    transition: none;
   }
 }
 

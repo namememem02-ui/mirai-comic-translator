@@ -2,7 +2,7 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>ComicTranslator — แปลการ์ตูนอัจฉริยะ</title>
+  <title>Mee-a-rai Comic Translator</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Sarabun:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Prompt:wght@300;400;600;700&family=Kanit:wght@300;400;600;700&family=Mitr:wght@300;400;600&family=Noto+Sans+Thai:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -13,11 +13,19 @@
   <!-- Header -->
   <header class="app-header">
     <div class="logo-area">
-      <span class="emblem">🧪</span>
-      <h1 class="app-title">ComicTranslator</h1>
+      <div id="meeARaiBrand" class="mee-a-rai-brand" data-expanded="false" aria-label="Mee-a-rai Comic Translator">
+        <div class="mee-a-rai-brand__mark">
+          <button id="meeARaiBrandToggle" class="mee-a-rai-brand__trigger" type="button" aria-expanded="false" aria-controls="meeARaiBrandName" aria-label="Toggle Mee-a-rai name">
+            <span class="mee-a-rai-brand__initial" aria-hidden="true">M</span>
+          </button>
+          <span id="meeARaiBrandName" class="mee-a-rai-brand__extension" aria-hidden="true">ee-a-rai</span>
+        </div>
+        <span class="mee-a-rai-brand__divider" aria-hidden="true">|</span>
+        <h1 class="app-title">Comic Translator</h1>
+      </div>
       <span class="version-tag">Phase 5</span>
     </div>
-    <div style="display:flex; align-items:center; gap:12px;">
+    <div class="app-header__controls">
       <div id="keyStatus" class="key-status checking">
         <span class="status-dot"></span>
         <span class="status-text">กำลังตรวจสอบ API Key...</span>
@@ -594,6 +602,7 @@
   <script src="inline-editor.js"></script>
   <script src="bubble-issue-filter.js"></script>
   <script src="chapter-find-replace.js"></script>
+  <script src="mee-a-rai-brand.js"></script>
   <script src="index.js"></script>
 </body>
 </html>

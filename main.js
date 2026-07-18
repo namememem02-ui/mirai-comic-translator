@@ -55,7 +55,7 @@ function createWindow() {
     height: 850,
     minWidth: 1000,
     minHeight: 700,
-    title: 'ComicTranslator — แปลการ์ตูนด้วย AI',
+    title: 'Mee-a-rai Comic Translator',
     icon: path.join(__dirname, 'assets', 'icon.png'), // will compile in next phase
     autoHideMenuBar: true,
     webPreferences: {
