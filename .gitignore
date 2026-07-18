@@ -4,6 +4,7 @@ projects/
 output/
 .zcode/
 .worktrees/
+.superpowers/
 *.tmp
 *.bak
 *.log

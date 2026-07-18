@@ -23,7 +23,7 @@ test('public Mee-a-rai name and semantic brand structure are integrated exactly 
   assert.equal(count(html, /class="app-title">Comic Translator<\/h1>/g), 1);
   assert.match(main, /title:\s*['"]Mee-a-rai Comic Translator['"]/);
   assert.equal(packageJson.description.startsWith('Mee-a-rai Comic Translator'), true);
-  assert.doesNotMatch(html, /Comic Translator\s+เธกเธตเธญเธฐ/);
+  assert.doesNotMatch(html, /Comic Translator\s+มีอะไร/);
 });
 
 test('brand module loads before the renderer and initializes with cleanup once', () => {
@@ -41,6 +41,7 @@ test('brand CSS fixes the mark at 39px idle and 166px expanded without responsiv
   assert.match(css, /\.mee-a-rai-brand__mark\s*\{[^}]*width:\s*39px[^}]*flex-shrink:\s*0/s);
   assert.match(css, /\.mee-a-rai-brand\.is-expanded\s+\.mee-a-rai-brand__mark\s*\{[^}]*width:\s*166px/s);
   assert.match(css, /\.mee-a-rai-brand__trigger\s*\{[^}]*width:\s*39px[^}]*min-width:\s*39px[^}]*min-height:\s*(?:35|39)px[^}]*border:\s*0\s*!important/s);
+  assert.match(css, /\.mee-a-rai-brand__trigger\s*\{[^}]*border:\s*0\s*!important[^}]*background:\s*transparent\s*!important/s);
   assert.match(css, /\.mee-a-rai-brand__mark\s*\{[^}]*overflow:\s*hidden/s);
   assert.match(css, /\.mee-a-rai-brand\s+\.app-title\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s);
   assert.match(css, /\.mee-a-rai-brand__trigger:focus-visible\s*\{[^}]*outline:/s);
