@@ -105,15 +105,27 @@ function getLamaManager() {
         }
         return {
           schema: 1,
-          packages: [{
-            backend: 'cpu',
-            version: '1.0.0',
-            url: 'https://github.com/namememem02-ui/mirai-comic-translator/releases/download/v0.1.0/lama-cpu.zip',
-            bytes: 350000000,
-            sha256: '0'.repeat(64),
-            minAppVersion: '0.1.0',
-            archive: 'zip',
-          }],
+          packages: [
+            {
+              backend: 'cpu',
+              version: '1.0.0',
+              url: 'https://github.com/namememem02-ui/mirai-comic-translator/releases/download/v0.1.0/lama-cpu.zip',
+              bytes: 350000000,
+              sha256: '0'.repeat(64),
+              minAppVersion: '0.1.0',
+              archive: 'zip',
+            },
+            {
+              backend: 'nvidia',
+              version: '1.0.0',
+              url: 'https://github.com/namememem02-ui/mirai-comic-translator/releases/download/v0.1.0/lama-cpu.zip',
+              bytes: 350000000,
+              sha256: '0'.repeat(64),
+              minAppVersion: '0.1.0',
+              minDriver: '522.06',
+              archive: 'zip',
+            },
+          ],
         };
       },
     };

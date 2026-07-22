@@ -5026,13 +5026,19 @@ function initLamaComponentUI() {
         const backend = mode === 'nvidia' ? 'nvidia' : 'cpu';
 
         if (action === 'install') {
-          await window.api.installLamaComponent(backend);
+          await window.api.installLamaComponent(backend).catch((err) => {
+            console.warn('Install LaMa component failed:', err);
+          });
         } else if (action === 'cancel') {
-          await window.api.cancelLamaComponentDownload();
+          await window.api.cancelLamaComponentDownload().catch(() => {});
         } else if (action === 'repair') {
-          await window.api.repairLamaComponent(backend);
+          await window.api.repairLamaComponent(backend).catch((err) => {
+            console.warn('Repair LaMa component failed:', err);
+          });
         } else if (action === 'remove') {
-          await window.api.removeLamaComponent(backend);
+          await window.api.removeLamaComponent(backend).catch((err) => {
+            console.warn('Remove LaMa component failed:', err);
+          });
         }
       });
     });
