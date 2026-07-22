@@ -24,6 +24,7 @@ const { resolveWithin, validatePathSegment, deriveProjectChapter } = require('./
 const { createSourceFolderRegistry } = require('./lib/source-folder-registry');
 const { createLocalAssetProtocol } = require('./lib/local-asset-protocol');
 const { createUpdateChecker } = require('./lib/update-checker');
+const { createLamaComponentManager } = require('./lib/lama-component-manager');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'mirai-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
@@ -45,6 +46,30 @@ const inpaintSidecar = createInpaintSidecarManager({
     }
   },
 });
+
+function validateBackend(backend) {
+  if (backend !== 'cpu' && backend !== 'nvidia') {
+    throw new Error('รองรับเฉพาะ backend "cpu" หรือ "nvidia" เท่านั้น');
+  }
+  return backend;
+}
+
+let lamaManager = null;
+function getLamaManager() {
+  if (!lamaManager) {
+    const userDataPath = app.getPath('userData');
+    lamaManager = createLamaComponentManager({
+      rootDir: path.join(userDataPath, 'components', 'lama'),
+      sidecarAdapter: inpaintSidecar,
+      onState: state => {
+        if (mainWin && !mainWin.isDestroyed()) {
+          mainWin.webContents.send('lama-component-state-changed', state);
+        }
+      },
+    });
+  }
+  return lamaManager;
+}
 
 // Resolve shared ScreenTranslator config path to reuse the API key
 const SHARED_CONFIG_DIR = path.join(
@@ -130,19 +155,31 @@ app.whenReady().then(() => {
   });
   createWindow();
   inpaintSidecar.ensureStarted();
+  getLamaManager().initialize();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('before-quit', () => inpaintSidecar.shutdown());
+app.on('before-quit', () => {
+  inpaintSidecar.shutdown();
+  if (lamaManager) lamaManager.shutdown();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
 // ---------- IPC Handlers ----------
+
+ipcMain.handle('get-lama-component-state', () => getLamaManager().getState());
+ipcMain.handle('check-lama-components', async () => getLamaManager().check());
+ipcMain.handle('install-lama-component', async (_e, backend) => getLamaManager().install(validateBackend(backend)));
+ipcMain.handle('cancel-lama-component-download', async () => getLamaManager().cancel());
+ipcMain.handle('repair-lama-component', async (_e, backend) => getLamaManager().repair(validateBackend(backend)));
+ipcMain.handle('remove-lama-component', async (_e, backend) => getLamaManager().remove(validateBackend(backend)));
+ipcMain.handle('save-lama-preferences', async (_e, prefs) => getLamaManager().setPreferences(prefs));
 
 ipcMain.handle('get-inpaint-status', () => inpaintSidecar.getStatus());
 ipcMain.handle('retry-inpaint-sidecar', () => inpaintSidecar.ensureStarted());

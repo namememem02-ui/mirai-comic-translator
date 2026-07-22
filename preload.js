@@ -45,5 +45,17 @@ contextBridge.exposeInMainWorld('api', {
   saveWatermarkSettings: (args) => ipcRenderer.invoke('save-watermark-settings', args),
   removeWatermark: (args) => ipcRenderer.invoke('remove-watermark', args),
   deletePageTranslation: (args) => ipcRenderer.invoke('delete-page-translation', args),
-  listChapterTranslations: (args) => ipcRenderer.invoke('list-chapter-translations', args)
+  listChapterTranslations: (args) => ipcRenderer.invoke('list-chapter-translations', args),
+  getLamaComponentState: () => ipcRenderer.invoke('get-lama-component-state'),
+  checkLamaComponents: () => ipcRenderer.invoke('check-lama-components'),
+  installLamaComponent: (backend) => ipcRenderer.invoke('install-lama-component', backend),
+  cancelLamaComponentDownload: () => ipcRenderer.invoke('cancel-lama-component-download'),
+  repairLamaComponent: (backend) => ipcRenderer.invoke('repair-lama-component', backend),
+  removeLamaComponent: (backend) => ipcRenderer.invoke('remove-lama-component', backend),
+  saveLamaPreferences: (prefs) => ipcRenderer.invoke('save-lama-preferences', prefs),
+  onLamaComponentState: (callback) => {
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('lama-component-state-changed', listener);
+    return () => ipcRenderer.removeListener('lama-component-state-changed', listener);
+  }
 });
