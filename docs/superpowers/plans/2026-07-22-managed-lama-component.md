@@ -6,7 +6,7 @@
 
 **Architecture:** A main-process component manager owns manifests, machine detection, downloads, archive validation, activation, and sidecar launch decisions. Small pure modules define manifest/status/selection contracts, preload exposes fixed IPC calls, and the renderer only presents structured state. CPU packaging is reproducible and independent from the Electron installer; the NVIDIA contract is implemented now while its downloadable asset stays unavailable until certified.
 
-**Tech Stack:** Electron 33, Node.js CommonJS and `node:test`, `extract-zip`, Python 3.11 embeddable runtime, FastAPI/Uvicorn, CPU-only PyTorch, Simple LaMa, electron-builder/NSIS, PowerShell packaging scripts.
+**Tech Stack:** Electron 33, Node.js CommonJS and `node:test`, a controlled two-pass extractor built on pinned `yauzl`, Python 3.11 embeddable runtime, FastAPI/Uvicorn, CPU-only PyTorch, Simple LaMa, electron-builder/NSIS, PowerShell packaging scripts.
 
 ## Global Constraints
 
@@ -85,14 +85,16 @@ test('missing nvidia-smi is a normal CPU-only result', async () => {
 
 **Files:**
 - Create: `lib/lama-component-installer.js`
+- Create: `lib/safe-zip-extractor.js`
 - Modify: `package.json`
 - Modify: `package-lock.json`
 - Test: `test/lama-component-installer.test.js`
+- Test: `test/safe-zip-extractor.test.js`
 
 **Interfaces:**
 - Produces: `createLamaComponentInstaller({ fetch, fs, extract, hashFile, now })` with `download(pkg, paths, signal, onProgress)`, `install(pkg, paths, signal, onProgress)`, `remove(backend, paths)`, and `inspect(backend, paths)`.
 - Consumes: a validated package object; all destination paths are derived from a trusted component root.
-- Dependency: direct production dependency `extract-zip` pinned through `package-lock.json`.
+- Dependency: direct production dependency `yauzl` pinned through `package-lock.json`; the controlled extractor pre-scans and validates the complete central directory before creating archive-derived paths or writing file data.
 
 - [ ] **Step 1: Write failing tests for streaming progress, cancellation cleanup, content-length mismatch, insufficient disk, checksum mismatch, traversal/absolute/symlink/duplicate entries, extraction size and count limits, failed probe rollback, atomic activation, repair, and backend-scoped removal**
 
@@ -106,7 +108,7 @@ test('checksum failure never replaces the active component', async () => {
 ```
 
 - [ ] **Step 2: Run focused tests and verify failures identify missing installer behavior**
-- [ ] **Step 3: Add `extract-zip` and implement staged `.partial` download, incremental SHA-256, abort handling, pre/post disk checks, entry validation callbacks, bounded extraction, `component.json` validation, executable/model probes, and atomic `active.json` replacement**
+- [ ] **Step 3: Add pinned `yauzl` and implement a controlled two-pass extractor, staged `.partial` download, incremental SHA-256, abort handling, pre/post disk checks, Windows-canonical path validation, bounded extraction, `component.json` validation, executable/model probes, immutable version-directory promotion, and atomic `active.json` replacement**
 - [ ] **Step 4: Run installer tests, then `npm.cmd test`**
 - [ ] **Step 5: Commit with `git commit -m "feat: securely install LaMa components"`**
 

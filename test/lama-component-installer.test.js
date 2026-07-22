@@ -8,6 +8,7 @@ const path = require('node:path');
 const JSZip = require('jszip');
 
 const { createLamaComponentInstaller } = require('../lib/lama-component-installer');
+const { createSafeZipExtractor } = require('../lib/safe-zip-extractor');
 
 const OLD_HASH = '0'.repeat(64);
 
@@ -28,7 +29,8 @@ async function zipFixture(overrides = {}) {
   zip.file('component.json', JSON.stringify(descriptor));
   zip.file('runtime/python.exe', overrides.python || 'python');
   zip.file('sidecar/inpaint_server.py', overrides.server || 'server');
-  zip.file('models/big-lama.pt', overrides.model || 'model');
+  if (overrides.modelDirectory) zip.folder('models/big-lama.pt');
+  else zip.file('models/big-lama.pt', overrides.model || 'model');
   if (overrides.extra) {
     for (const [name, value] of Object.entries(overrides.extra)) zip.file(name, value);
   }
@@ -82,6 +84,14 @@ function installerFor(buffer, overrides = {}) {
     ...overrides,
   });
   return { installer, probes };
+}
+
+function fsWith(overrides = {}) {
+  return new Proxy(fsp, {
+    get(target, property) {
+      return Object.prototype.hasOwnProperty.call(overrides, property) ? overrides[property] : target[property];
+    },
+  });
 }
 
 async function seedActive(root, entries) {
@@ -180,9 +190,30 @@ test('rejects content-length mismatch and oversized streams without leaving file
   await assert.rejects(mismatch.download(pkg, { root }), /content-length/i);
 
   const oversized = installerFor(buffer, {
-    fetch: async () => responseFor(Buffer.concat([buffer, Buffer.from('extra')]), { contentLength: null }),
+    fetch: async () => responseFor(Buffer.concat([buffer, Buffer.from('extra')]), { contentLength: buffer.length }),
   }).installer;
   await assert.rejects(oversized.download(pkg, { root }), /size/i);
+  assert.equal((await partialFiles(root)).length, 0);
+});
+
+test('requires one strict safe Content-Length header matching the manifest', async (t) => {
+  const root = await tempRoot(t);
+  const buffer = await zipFixture();
+  const pkg = packageFor(buffer);
+  const responses = [
+    responseFor(buffer, { contentLength: null }),
+    responseFor(buffer, { contentLength: 'not-a-number' }),
+    responseFor(buffer, { contentLength: String(Number.MAX_SAFE_INTEGER + 1) }),
+  ];
+  const duplicateHeaders = new Headers();
+  duplicateHeaders.append('content-length', String(buffer.length));
+  duplicateHeaders.append('content-length', String(buffer.length));
+  responses.push(new Response(buffer, { headers: duplicateHeaders }));
+
+  for (const response of responses) {
+    const { installer } = installerFor(buffer, { fetch: async () => response });
+    await assert.rejects(installer.download(pkg, { root }), /content-length/i);
+  }
   assert.equal((await partialFiles(root)).length, 0);
 });
 
@@ -232,30 +263,25 @@ test('checksum failure never replaces the active component', async (t) => {
   assert.equal((await partialFiles(root)).length, 0);
 });
 
-function maliciousExtractor(entries) {
-  return async (_archive, options) => {
-    for (const entry of entries) await options.onEntry(entry);
-  };
-}
-
 test('rejects traversal, absolute, symlink, duplicate, and special archive entries', async (t) => {
   const root = await tempRoot(t);
-  const buffer = await zipFixture();
-  const pkg = packageFor(buffer);
   const cases = [
-    { label: 'traversal', entries: [{ fileName: '../escape.txt', uncompressedSize: 1, externalFileAttributes: 0 }] },
-    { label: 'absolute', entries: [{ fileName: 'C:\\escape.txt', uncompressedSize: 1, externalFileAttributes: 0 }] },
-    { label: 'symlink', entries: [{ fileName: 'link', uncompressedSize: 1, externalFileAttributes: 0o120777 << 16 }] },
-    { label: 'duplicate', entries: [
-      { fileName: 'Models/model.bin', uncompressedSize: 1, externalFileAttributes: 0 },
-      { fileName: 'models/model.bin', uncompressedSize: 1, externalFileAttributes: 0 },
-    ] },
-    { label: 'special', entries: [{ fileName: 'pipe', uncompressedSize: 1, externalFileAttributes: 0o010777 << 16 }] },
+    [{ name: '../escape.txt' }],
+    [{ name: 'C:\\escape.txt' }],
+    [{ name: 'link', unixPermissions: 0o120777 }],
+    [
+      { name: 'Models/model.bin' },
+      { name: 'models/model.bin' },
+    ],
+    [{ name: 'pipe', unixPermissions: 0o010777 }],
   ];
 
-  for (const scenario of cases) {
-    const { installer } = installerFor(buffer, { extract: maliciousExtractor(scenario.entries) });
-    await assert.rejects(installer.install(pkg, { root }), new RegExp(scenario.label, 'i'));
+  for (const entries of cases) {
+    const zip = new JSZip();
+    for (const entry of entries) zip.file(entry.name, 'unsafe', { createFolders: false, unixPermissions: entry.unixPermissions });
+    const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', platform: 'UNIX' });
+    const { installer } = installerFor(buffer);
+    await assert.rejects(installer.install(packageFor(buffer), { root }), /relative|absolute|symlink|alias|special|type|character/i);
     assert.equal((await partialFiles(root)).length, 0);
   }
 });
@@ -266,20 +292,12 @@ test('rejects archives over entry-count and extracted-size limits', async (t) =>
   const pkg = packageFor(buffer);
 
   const tooMany = installerFor(buffer, {
-    extract: maliciousExtractor([
-      { fileName: 'one', uncompressedSize: 1, externalFileAttributes: 0 },
-      { fileName: 'two', uncompressedSize: 1, externalFileAttributes: 0 },
-      { fileName: 'three', uncompressedSize: 1, externalFileAttributes: 0 },
-    ]),
-    limits: { maxEntries: 2, maxExtractedBytes: 100 },
+    limits: { maxEntries: 2, maxExtractedBytes: 1024 * 1024 },
   }).installer;
   await assert.rejects(tooMany.install(pkg, { root }), /entry count/i);
 
   const tooLarge = installerFor(buffer, {
-    extract: maliciousExtractor([
-      { fileName: 'huge', uncompressedSize: 101, externalFileAttributes: 0 },
-    ]),
-    limits: { maxEntries: 10, maxExtractedBytes: 100 },
+    limits: { maxEntries: 100, maxExtractedBytes: 100 },
   }).installer;
   await assert.rejects(tooLarge.install(pkg, { root }), /extracted size/i);
 });
@@ -326,6 +344,8 @@ test('validates layout, probes the staged component, then atomically activates m
   assert.equal(installed.version, '1.0.0');
   assert.equal(probes.length, 1);
   assert.equal(probes[0].backend, 'cpu');
+  assert.equal(probes[0].componentVersion, '1.0.0');
+  assert.equal(Object.hasOwn(probes[0], 'version'), false);
   assert.match(probes[0].pythonPath, /runtime[\\/]python\.exe$/);
   assert.equal(probes[0].pythonExistsDuringProbe, true);
   assert.equal(probes[0].modelExistsDuringProbe, true);
@@ -335,6 +355,7 @@ test('validates layout, probes the staged component, then atomically activates m
       cpu: {
         backend: 'cpu', version: '1.0.0', sha256: pkg.sha256,
         installedAt: '2026-07-22T10:00:00.000Z',
+        directory: installed.directory,
       },
     },
   });
@@ -353,9 +374,37 @@ test('repair replaces only the selected verified version after its probe succeed
 
   await installer.install(pkg, { root });
 
-  assert.equal(await fsp.readFile(path.join(root, 'cpu', '1.0.0', 'runtime', 'python.exe'), 'utf8'), 'replacement-python');
+  const active = JSON.parse(await fsp.readFile(path.join(root, 'active.json'), 'utf8'));
+  assert.notEqual(active.components.cpu.directory, '1.0.0');
+  assert.equal(await fsp.readFile(path.join(root, 'cpu', active.components.cpu.directory, 'runtime', 'python.exe'), 'utf8'), 'replacement-python');
+  assert.equal(fs.existsSync(path.join(root, 'cpu', '1.0.0')), false);
   assert.equal(await fsp.readFile(path.join(root, 'nvidia', '2.0.0', 'marker.txt'), 'utf8'), 'healthy-gpu');
   assert.equal((await installer.inspect('nvidia', { root })).version, '2.0.0');
+});
+
+test('same-version repair keeps the old immutable directory through metadata commit failure', async (t) => {
+  const root = await tempRoot(t);
+  const buffer = await zipFixture({ python: 'replacement-python' });
+  const pkg = packageFor(buffer);
+  await seedActive(root, { cpu: { version: '1.0.0', marker: 'old-cpu' } });
+  let oldPresentAtCommit = false;
+  const wrappedFs = fsWith({
+    async rename(source, destination) {
+      if (destination === path.join(root, 'active.json') && path.basename(source).startsWith('.active-')) {
+        oldPresentAtCommit = fs.existsSync(path.join(root, 'cpu', '1.0.0', 'marker.txt'));
+        throw Object.assign(new Error('simulated metadata commit failure'), { code: 'EIO' });
+      }
+      return fsp.rename(source, destination);
+    },
+  });
+  const { installer } = installerFor(buffer, { fs: wrappedFs });
+
+  await assert.rejects(installer.install(pkg, { root }), /metadata commit failure/i);
+
+  assert.equal(oldPresentAtCommit, true);
+  assert.equal(await fsp.readFile(path.join(root, 'cpu', '1.0.0', 'marker.txt'), 'utf8'), 'old-cpu');
+  assert.equal((await installer.inspect('cpu', { root })).version, '1.0.0');
+  assert.deepEqual((await fsp.readdir(path.join(root, 'cpu'))), ['1.0.0']);
 });
 
 test('backend-scoped removal preserves the other managed backend and metadata', async (t) => {
@@ -376,6 +425,28 @@ test('backend-scoped removal preserves the other managed backend and metadata', 
   assert.deepEqual(Object.keys(JSON.parse(await fsp.readFile(path.join(root, 'active.json'), 'utf8')).components), ['nvidia']);
 });
 
+test('removal cleanup failure never restores files after metadata commit', async (t) => {
+  const root = await tempRoot(t);
+  await seedActive(root, { cpu: { version: '1.0.0', marker: 'cpu' } });
+  const buffer = await zipFixture();
+  const wrappedFs = fsWith({
+    async rm(target, options) {
+      if (path.basename(target).startsWith('.remove-cpu-')) {
+        throw Object.assign(new Error('simulated quarantine cleanup failure'), { code: 'EACCES' });
+      }
+      return fsp.rm(target, options);
+    },
+  });
+  const { installer } = installerFor(buffer, { fs: wrappedFs });
+
+  const result = await installer.remove('cpu', { root });
+
+  assert.deepEqual(result, { removed: true, warning: 'cleanup-pending' });
+  assert.equal(await installer.inspect('cpu', { root }), null);
+  assert.equal(fs.existsSync(path.join(root, 'cpu')), false);
+  assert.equal((await fsp.readdir(root)).some((name) => name.startsWith('.remove-cpu-')), true);
+});
+
 test('rejects an unsafe component descriptor before probing or activation', async (t) => {
   const root = await tempRoot(t);
   const buffer = await zipFixture({
@@ -386,6 +457,69 @@ test('rejects an unsafe component descriptor before probing or activation', asyn
 
   await assert.rejects(installer.install(pkg, { root }), /component layout/i);
   assert.equal(probes.length, 0);
+  assert.equal((await partialFiles(root)).length, 0);
+});
+
+test('stats component.json before reading and rejects oversized descriptors without a read', async (t) => {
+  const root = await tempRoot(t);
+  const oversized = 'x'.repeat(65 * 1024);
+  const zip = new JSZip();
+  zip.file('component.json', oversized);
+  zip.file('runtime/python.exe', 'python');
+  zip.file('sidecar/inpaint_server.py', 'server');
+  zip.file('models/big-lama.pt', 'model');
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
+  const pkg = packageFor(buffer);
+  let descriptorRead = false;
+  const wrappedFs = fsWith({
+    async readFile(target, ...args) {
+      if (path.basename(target) === 'component.json') descriptorRead = true;
+      return fsp.readFile(target, ...args);
+    },
+  });
+  const { installer } = installerFor(buffer, { fs: wrappedFs });
+
+  await assert.rejects(installer.install(pkg, { root }), /component layout/i);
+  assert.equal(descriptorRead, false);
+});
+
+test('requires every descriptor target to resolve to a contained regular file', async (t) => {
+  const root = await tempRoot(t);
+  const buffer = await zipFixture({ modelDirectory: true });
+  const pkg = packageFor(buffer);
+  const { installer, probes } = installerFor(buffer);
+
+  await assert.rejects(installer.install(pkg, { root }), /component layout/i);
+  assert.equal(probes.length, 0);
+});
+
+test('cancellation during a real archive file stream preserves active metadata and cleans staging', async (t) => {
+  const root = await tempRoot(t);
+  await seedActive(root, { cpu: { version: '0.9.0', marker: 'healthy-old' } });
+  const zip = new JSZip();
+  zip.file('component.json', JSON.stringify({
+    schema: 1, backend: 'cpu', version: '1.0.0', minAppVersion: '0.1.0',
+    files: { python: 'runtime/python.exe', server: 'sidecar/inpaint_server.py', model: 'models/big-lama.pt' },
+  }));
+  zip.file('runtime/python.exe', 'python');
+  zip.file('sidecar/inpaint_server.py', 'server');
+  zip.file('models/big-lama.pt', crypto.randomBytes(2 * 1024 * 1024), { compression: 'STORE' });
+  const buffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'STORE' });
+  const pkg = packageFor(buffer);
+  const controller = new AbortController();
+  const safeExtractor = createSafeZipExtractor({ fs: fsp });
+  const { installer } = installerFor(buffer, {
+    extract: (archive, destination, options) => safeExtractor.extract(archive, destination, {
+      ...options,
+      onProgress(event) {
+        if (event.extractedBytes > 0) controller.abort();
+      },
+    }),
+  });
+
+  await assert.rejects(installer.install(pkg, { root }, controller.signal), (error) => error && error.name === 'AbortError');
+
+  assert.equal((await installer.inspect('cpu', { root })).version, '0.9.0');
   assert.equal((await partialFiles(root)).length, 0);
 });
 
