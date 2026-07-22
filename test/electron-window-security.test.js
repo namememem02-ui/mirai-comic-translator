@@ -24,4 +24,5 @@ test('document CSP permits only the required image and network sources', () => {
   assert.match(html, /Content-Security-Policy/);
   assert.match(html, /img-src 'self' data: blob: mirai-asset:/);
   assert.match(html, /connect-src 'self' http:\/\/127\.0\.0\.1:\* https:\/\/generativelanguage\.googleapis\.com/);
+  assert.match(html, /connect-src[^";]*mirai-asset:/);
 });
