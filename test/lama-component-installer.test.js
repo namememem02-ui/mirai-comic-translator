@@ -155,6 +155,40 @@ test('streams download bytes to a verified file and reports bounded progress', a
   assert.equal((await partialFiles(root)).length, 0);
 });
 
+test('retries partial filesystem writes and hashes only bytes confirmed written', async (t) => {
+  const root = await tempRoot(t);
+  const buffer = await zipFixture();
+  const pkg = packageFor(buffer);
+  let partialWrites = 0;
+  const partialWriteFs = fsWith({
+    async open(filePath, flags, mode) {
+      const handle = await fsp.open(filePath, flags, mode);
+      return new Proxy(handle, {
+        get(target, property) {
+          if (property !== 'write') {
+            const value = target[property];
+            return typeof value === 'function' ? value.bind(target) : value;
+          }
+          return async (data, offset, length, position) => {
+            const actualOffset = Number.isInteger(offset) ? offset : 0;
+            const actualLength = Number.isInteger(length) ? length : data.length - actualOffset;
+            const requested = Math.max(1, Math.floor(actualLength / 2));
+            const result = await target.write(data, actualOffset, requested, position ?? null);
+            partialWrites += 1;
+            return result;
+          };
+        },
+      });
+    },
+  });
+  const { installer } = installerFor(buffer, { fs: partialWriteFs });
+
+  const downloaded = await installer.download(pkg, { root });
+
+  assert.ok(partialWrites > 1);
+  assert.deepEqual(await fsp.readFile(downloaded), buffer);
+});
+
 test('cancellation removes the partial download', async (t) => {
   const root = await tempRoot(t);
   const buffer = await zipFixture();

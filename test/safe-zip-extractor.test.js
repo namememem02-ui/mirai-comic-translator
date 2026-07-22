@@ -42,6 +42,8 @@ const LIMITS = {
   maxEntries: 100,
   maxExtractedBytes: 8 * 1024 * 1024,
   maxCompressionRatio: 1000,
+  maxPathDepth: 16,
+  maxCanonicalPaths: 200,
 };
 
 test('pre-scans a real traversal ZIP before creating any destination or escaped path', async (t) => {
@@ -124,6 +126,31 @@ test('pre-scan enforces entry-count, total-size, and compression-ratio limits', 
   await assert.rejects(extractor().extract(ratioArchive, path.join(root, 'ratio'), {
     limits: { ...LIMITS, maxCompressionRatio: 2 },
   }), /compression ratio/i);
+});
+
+test('pre-scan bounds path depth and unique implicit parents before creating staging', async (t) => {
+  const root = await workspace(t);
+  const deepArchive = await writeZip(root, [{
+    name: `${Array.from({ length: 5 }, (_, index) => `level-${index}`).join('/')}/file.txt`,
+    data: 'deep',
+  }]);
+  const deepDestination = path.join(root, 'deep-staging');
+
+  await assert.rejects(extractor().extract(deepArchive, deepDestination, {
+    limits: { ...LIMITS, maxPathDepth: 4 },
+  }), /path depth/i);
+  assert.equal(fs.existsSync(deepDestination), false);
+
+  const parentArchive = await writeZip(root, Array.from({ length: 3 }, (_, index) => ({
+    name: `unique-${index}/nested-${index}/file.txt`,
+    data: String(index),
+  })));
+  const parentDestination = path.join(root, 'parent-staging');
+
+  await assert.rejects(extractor().extract(parentArchive, parentDestination, {
+    limits: { ...LIMITS, maxCanonicalPaths: 8 },
+  }), /canonical path/i);
+  assert.equal(fs.existsSync(parentDestination), false);
 });
 
 test('cooperatively aborts a real file stream and removes staging', async (t) => {
