@@ -535,7 +535,14 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
     throw new Error('ไม่สามารถอ่านไฟล์ภาพสำหรับแปลได้');
   }
 
-  const imageSize = sourceImage.getSize();
+  let imageSize = sourceImage.getSize();
+  if (imageSize.width > 1536) {
+    const scale = 1536 / imageSize.width;
+    const targetHeight = Math.round(imageSize.height * scale);
+    sourceImage = sourceImage.resize({ width: 1536, height: targetHeight, quality: 'better' });
+    imageSize = sourceImage.getSize();
+  }
+
   const tiles = planTranslationTiles(imageSize.width, imageSize.height);
   const ext = path.extname(imagePath).toLowerCase();
   const originalMimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
@@ -556,10 +563,9 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
       width: tile.width,
       height: tile.height,
     });
-    const usePng = ext === '.png';
     const result = await requestGeminiTranslation({
-      data: usePng ? croppedImage.toPNG() : croppedImage.toJPEG(95),
-      mimeType: usePng ? 'image/png' : 'image/jpeg',
+      data: usePng ? croppedImage.toPNG() : croppedImage.toJPEG(85),
+      mimeType,
       glossary,
     });
     tileEntries.push({ tile, result });
