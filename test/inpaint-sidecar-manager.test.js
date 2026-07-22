@@ -66,3 +66,60 @@ test('reports timeout and can retry a later successful startup', async () => {
   healthy = true;
   assert.equal((await manager.ensureStarted()).state, 'ready');
 });
+
+test('uses launchDescriptor pythonPath exclusively and passes explicit LAMA environment variables', async () => {
+  let testedCandidates = [];
+  let passedEnv = null;
+  let passedPython = null;
+  let probeCount = 0;
+  const manager = createInpaintSidecarManager({
+    launchDescriptor: {
+      pythonPath: 'C:\\managed\\python.exe',
+      serverPath: 'C:\\managed\\server.py',
+      modelPath: 'C:\\managed\\big-lama.pt',
+      backend: 'nvidia',
+      componentVersion: '1.0.0',
+    },
+    candidates: ['C:\\system\\python.exe', 'py'],
+    probe: async () => ({
+      state: ++probeCount >= 2 ? 'ready' : 'unavailable',
+      backend: 'nvidia',
+      componentVersion: '1.0.0',
+      errorCode: null,
+      message: 'ready',
+    }),
+    probePython: async candidate => {
+      testedCandidates.push(candidate);
+      return true;
+    },
+    spawn: (python, sidecar, opts) => {
+      passedPython = python;
+      passedEnv = opts?.env;
+      return { kill() {} };
+    },
+    wait: async () => {},
+    maxPolls: 2,
+  });
+
+  const status = await manager.ensureStarted();
+  assert.equal(status.state, 'ready');
+  assert.equal(status.backend, 'nvidia');
+  assert.equal(status.componentVersion, '1.0.0');
+  assert.deepEqual(testedCandidates, ['C:\\managed\\python.exe']);
+  assert.equal(passedPython, 'C:\\managed\\python.exe');
+  assert.equal(passedEnv?.LAMA_BACKEND, 'nvidia');
+  assert.equal(passedEnv?.LAMA_MODEL, 'C:\\managed\\big-lama.pt');
+  assert.equal(passedEnv?.LAMA_VERSION, '1.0.0');
+});
+
+test('getStatus returns structured health metadata', async () => {
+  const manager = createInpaintSidecarManager({
+    probe: async () => ({ state: 'ready', backend: 'cpu', componentVersion: '1.0.0', errorCode: null, message: 'ready' }),
+  });
+  await manager.ensureStarted();
+  const status = manager.getStatus();
+  assert.equal(status.state, 'ready');
+  assert.equal(status.backend, 'cpu');
+  assert.equal(status.componentVersion, '1.0.0');
+});
+
