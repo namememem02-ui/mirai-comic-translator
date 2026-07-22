@@ -468,6 +468,7 @@ openSettingsBtn.addEventListener('click', () => {
   savedUiScale = window.UiScale.normalizeUiScale(appSettings.uiScale);
   settingsSaved = false;
   applySettingsToDialog();
+  if (typeof window.refreshLamaUI === 'function') window.refreshLamaUI();
   settingsDialog.showModal();
   refreshUpdateInfo();
 });
@@ -4979,9 +4980,13 @@ function initLamaComponentUI() {
     });
   }
 
-  if (window.api.getLamaComponentState) {
-    window.api.getLamaComponentState().then(updateUI).catch(() => {});
-  }
+  window.refreshLamaUI = function refreshLamaUI() {
+    if (window.api && window.api.getLamaComponentState) {
+      window.api.getLamaComponentState().then(updateUI).catch(() => {});
+    }
+  };
+
+  window.refreshLamaUI();
   if (window.api.onLamaComponentState) {
     window.api.onLamaComponentState(updateUI);
   }
