@@ -7,13 +7,51 @@
   "author": "suppo",
   "scripts": {
     "start": "electron .",
-    "test": "node --test"
+    "test": "node --test",
+    "dist:win": "electron-builder --win"
   },
   "devDependencies": {
-    "electron": "^33.0.0"
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
   },
   "dependencies": {
     "jszip": "^3.10.1",
     "yauzl": "2.10.0"
+  },
+  "build": {
+    "appId": "comic-translator",
+    "productName": "Mee-a-rai Comic Translator",
+    "directories": {
+      "output": "artifacts/installer"
+    },
+    "files": [
+      "**/*",
+      "!**/*.venv*",
+      "!**/ct_venv*",
+      "!**/venv*",
+      "!**/projects/*",
+      "!**/output/*",
+      "!**/artifacts/*",
+      "!**/test/*",
+      "!**/docs/*",
+      "!**/.git*",
+      "!**/.superpowers*",
+      "!**/.worktrees*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Mee-a-rai Comic Translator",
+      "artifactName": "Mee-a-rai-ComicTranslator-Setup-${version}.${ext}",
+      "include": "build/installer.nsh"
+    }
   }
 }
