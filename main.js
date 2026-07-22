@@ -459,6 +459,59 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
   }
 });
 
+function safeParseJson(rawText) {
+  if (typeof rawText !== 'string' || !rawText.trim()) return null;
+  let text = rawText.trim();
+  text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
+  // Remove trailing commas before closing braces/brackets
+  text = text.replace(/,\s*([}\]])/g, '$1');
+
+  try {
+    return JSON.parse(text);
+  } catch (initialErr) {
+    let openBrackets = 0;
+    let openBraces = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let i = 0; i < text.length; i += 1) {
+      const ch = text[i];
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (ch === '{') openBraces += 1;
+        else if (ch === '}') openBraces -= 1;
+        else if (ch === '[') openBrackets += 1;
+        else if (ch === ']') openBrackets -= 1;
+      }
+    }
+
+    let repaired = text;
+    if (inString) repaired += '"';
+    repaired = repaired.replace(/,\s*$/, '');
+    while (openBrackets > 0) { repaired += ']'; openBrackets -= 1; }
+    while (openBraces > 0) { repaired += '}'; openBraces -= 1; }
+    repaired = repaired.replace(/,\s*([}\]])/g, '$1');
+
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      throw initialErr;
+    }
+  }
+}
+
 async function requestGeminiTranslation({ data, mimeType, glossary }) {
   const apiKey = apiKeyStore.getKey();
   if (!apiKey) {
@@ -491,7 +544,8 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
           }
         ],
         generationConfig: {
-          responseMimeType: "application/json"
+          responseMimeType: "application/json",
+          maxOutputTokens: 8192
         }
       };
 
@@ -518,7 +572,7 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
         .trim();
 
       try {
-        return JSON.parse(outputText);
+        return safeParseJson(outputText);
       } catch (err) {
         console.error('Failed to parse Gemini output as JSON:', outputText);
         throw new Error('Gemini ตอบกลับไม่ได้โครงสร้าง JSON ที่ถูกต้อง: ' + err.message);
