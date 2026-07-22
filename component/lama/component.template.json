@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "id": "lama",
+  "name": "LaMa Retouch Component",
+  "version": "1.0.0",
+  "backend": "cpu",
+  "launch": {
+    "python": "python/python.exe",
+    "server": "sidecar/inpaint_server.py",
+    "model": "models/big-lama.pt"
+  }
+}

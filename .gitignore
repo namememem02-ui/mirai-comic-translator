@@ -15,5 +15,5 @@ output/
 *.env
 ct_venv/
 .venv/
-venv/
-
+artifacts/
+build/
