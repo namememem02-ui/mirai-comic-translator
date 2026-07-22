@@ -43,6 +43,9 @@ const inpaintSidecar = createInpaintSidecarManager({
     if (mainWin && !mainWin.isDestroyed()) {
       mainWin.webContents.send('inpaint-status-changed', status);
     }
+    if (status && status.state === 'ready') {
+      getLamaManager().initialize().catch(() => {});
+    }
   },
 });
 
@@ -239,8 +242,10 @@ app.whenReady().then(() => {
     }
   });
   createWindow();
-  inpaintSidecar.ensureStarted();
-  getLamaManager().initialize();
+  inpaintSidecar.ensureStarted().then(() => {
+    getLamaManager().initialize().catch(() => {});
+  }).catch(() => {});
+  getLamaManager().initialize().catch(() => {});
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
