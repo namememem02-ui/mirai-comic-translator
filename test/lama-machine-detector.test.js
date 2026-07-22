@@ -27,7 +27,7 @@ test('missing nvidia-smi is a normal CPU-only result', async () => {
   });
 
   assert.deepEqual((await detector.detect('C:\\components')).nvidia, {
-    present: false, driverVersion: '', compatible: false, reason: 'not-detected',
+    present: false, name: '', driverVersion: '', compatible: false, reason: 'not-detected',
   });
 });
 
@@ -36,7 +36,7 @@ test('reports a supported NVIDIA driver from the validated component contract', 
 
   assert.deepEqual(result, {
     platform: 'win32', arch: 'x64', freeBytes: 9e9,
-    nvidia: { present: true, driverVersion: '551.76', compatible: true, reason: 'supported' },
+    nvidia: { present: true, name: 'NVIDIA GeForce RTX 4090', driverVersion: '551.76', compatible: true, reason: 'supported' },
   });
 });
 
@@ -46,7 +46,7 @@ test('compares dotted NVIDIA driver versions numerically', async () => {
   }).detect('C:\\components');
 
   assert.deepEqual(result.nvidia, {
-    present: true, driverVersion: '531.100', compatible: true, reason: 'supported',
+    present: true, name: 'NVIDIA GeForce RTX 4090', driverVersion: '531.100', compatible: true, reason: 'supported',
   });
 });
 
@@ -56,7 +56,7 @@ test('rejects oversized and numeric-overflow driver components', async () => {
       execFile: async () => ({ stdout: `NVIDIA GeForce RTX 4090, ${driverVersion}\n`, stderr: '' }),
     }).detect('C:\\components');
     assert.deepEqual(result.nvidia, {
-      present: false, driverVersion: '', compatible: false, reason: 'invalid-output',
+      present: false, name: '', driverVersion: '', compatible: false, reason: 'invalid-output',
     });
   }
 });
@@ -67,7 +67,7 @@ test('does not treat malformed nvidia-smi output as usable hardware', async () =
   }).detect('C:\\components');
 
   assert.deepEqual(result.nvidia, {
-    present: false, driverVersion: '', compatible: false, reason: 'invalid-output',
+    present: false, name: '', driverVersion: '', compatible: false, reason: 'invalid-output',
   });
 });
 
@@ -79,7 +79,7 @@ test('does not probe NVIDIA on non-x64 Windows', async () => {
 
   assert.equal(called, false);
   assert.deepEqual(result.nvidia, {
-    present: false, driverVersion: '', compatible: false, reason: 'unsupported-platform',
+    present: false, name: '', driverVersion: '', compatible: false, reason: 'unsupported-platform',
   });
 });
 
@@ -90,14 +90,14 @@ test('uses execFile arguments without a shell and returns bounded public diagnos
     execFile: async (...args) => { call = args; throw Object.assign(new Error('C:\\Users\\private\\secret-token'), { code: 'EACCES' }); },
   }).detect('C:\\components');
 
-  assert.deepEqual(call, [
-    'nvidia-smi',
+  assert.ok(call[0].includes('nvidia-smi'));
+  assert.deepEqual(call.slice(1), [
     ['--query-gpu=name,driver_version', '--format=csv,noheader'],
     { timeout: 3000, windowsHide: true },
   ]);
   assert.deepEqual(result, {
     platform: 'win32', arch: 'x64', freeBytes: 0,
-    nvidia: { present: false, driverVersion: '', compatible: false, reason: 'not-detected' },
+    nvidia: { present: false, name: '', driverVersion: '', compatible: false, reason: 'not-detected' },
   });
   assert.equal(JSON.stringify(result).includes('private'), false);
   assert.equal(JSON.stringify(result).includes('secret-token'), false);
@@ -109,7 +109,7 @@ test('normalizes a timed out NVIDIA probe to a safe unavailable result', async (
   }).detect('C:\\components');
 
   assert.deepEqual(result.nvidia, {
-    present: false, driverVersion: '', compatible: false, reason: 'not-detected',
+    present: false, name: '', driverVersion: '', compatible: false, reason: 'not-detected',
   });
   assert.equal(JSON.stringify(result).includes('private'), false);
 });
