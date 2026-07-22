@@ -40,11 +40,13 @@ function createHarness(options = {}) {
   let removeFailure = options.removeFailure;
   let inspectFailure = options.inspectFailure;
   let inspectGate = options.inspectGate;
+  let postInstallPhase = false;
 
   const installer = {
     async inspect(backend) {
       calls.push(`inspect:${backend}`);
       if (backend === 'cpu' && inspectGate) await inspectGate.promise;
+      if (postInstallPhase && options.postInstallInspectGate) await options.postInstallInspectGate.promise;
       if (inspectFailure === backend) {
         const error = new Error(`secret path C:\\Users\\person\\${backend}`);
         if (options.inspectErrorCode !== null) error.code = options.inspectErrorCode || 'integrity-failed';
@@ -63,6 +65,7 @@ function createHarness(options = {}) {
       if (installFailure) throw new Error('C:\\Users\\person\\api-key=secret');
       const value = installed(pkg.backend, pkg.version);
       inventory.set(pkg.backend, value);
+      postInstallPhase = true;
       if (options.postInstallInspectFailure) inspectFailure = pkg.backend;
       return value;
     },
@@ -599,12 +602,65 @@ test('shutdown supports stop-only adapters and attempts all cleanup actions', as
   const calls = [];
   const harness = createHarness({
     sidecars: {
-      cpu: { async stop() { calls.push('cpu'); throw new Error('stop failed'); } },
-      nvidia: { async stop() { calls.push('nvidia'); } },
+      cpu: { async stop(backend) { calls.push(`cpu:${backend}`); throw new Error('stop failed'); } },
+      nvidia: { async stop(backend) { calls.push(`nvidia:${backend}`); } },
     },
   });
   await harness.manager.initialize();
   await assert.doesNotReject(harness.manager.shutdown());
-  assert.deepEqual(calls, ['cpu', 'nvidia']);
+  assert.deepEqual(calls, ['cpu:cpu', 'nvidia:nvidia']);
   assert.equal(harness.manager.subscribe(() => {}), false);
+});
+
+test('cancel during post-activation inspection invalidates old backend trust', async () => {
+  const postInstallInspectGate = deferred();
+  const harness = createHarness({ cpuReady: true, mode: 'cpu', postInstallInspectGate });
+  await harness.manager.initialize();
+  const installing = harness.manager.install('cpu');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(harness.manager.cancel(), true);
+  postInstallInspectGate.resolve();
+  await assert.rejects(installing, { name: 'AbortError' });
+  assert.notEqual(harness.manager.getState().state, 'ready-cpu');
+  await harness.manager.startRetouch();
+  assert.equal(harness.manager.getState().state, 'cpu-download-required');
+  assert.equal(harness.calls.includes('sidecar:start:cpu'), false);
+});
+
+test('shutdown during post-activation inspection never restores pre-install trust', async () => {
+  const postInstallInspectGate = deferred();
+  const harness = createHarness({ cpuReady: true, mode: 'cpu', postInstallInspectGate });
+  await harness.manager.initialize();
+  const installing = harness.manager.install('cpu');
+  await new Promise((resolve) => setImmediate(resolve));
+  const shuttingDown = harness.manager.shutdown();
+  postInstallInspectGate.resolve();
+  await assert.rejects(installing, { name: 'AbortError' });
+  await shuttingDown;
+  assert.notEqual(harness.manager.getState().state, 'ready-cpu');
+});
+
+test('late mismatched readiness and rejection both trigger cleanup after shutdown', async () => {
+  for (const outcome of ['mismatch', 'rejection']) {
+    const startup = deferred();
+    const calls = [];
+    const legacySidecar = {
+      ensureStarted() { calls.push('start'); return startup.promise; },
+      async shutdown() { calls.push('shutdown'); },
+    };
+    const harness = createHarness({ cpuReady: true, mode: 'cpu', sidecar: legacySidecar });
+    await harness.manager.initialize();
+    const starting = harness.manager.startRetouch();
+    await new Promise((resolve) => setImmediate(resolve));
+    const shuttingDown = harness.manager.shutdown();
+    await assert.rejects(starting, { name: 'AbortError' });
+    await shuttingDown;
+    if (outcome === 'mismatch') {
+      startup.resolve({ state: 'ready', backend: 'nvidia', componentVersion: '9.9.9' });
+    } else {
+      startup.reject(new Error('spawned then failed'));
+    }
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(calls.filter((call) => call === 'shutdown').length, 2, outcome);
+  }
 });
