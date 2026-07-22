@@ -28,3 +28,9 @@ test('preview still draws translated text when LaMa is unavailable', () => {
 
   assert.match(unavailableBranch, /renderTypesetTextLayer\(renderToken\)/);
 });
+
+test('renderer inpainting uses the CSP-approved loopback origin', () => {
+  assert.match(script, /fetch\('http:\/\/127\.0\.0\.1:5000\/inpaint'/);
+  assert.doesNotMatch(script, /http:\/\/localhost:5000\/inpaint/);
+  assert.match(html, /connect-src[^";]*http:\/\/127\.0\.0\.1:\*/);
+});

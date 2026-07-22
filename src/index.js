@@ -3107,7 +3107,7 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
   formData.append('image', originalBlob, 'image.jpg');
   formData.append('mask', maskBlob, 'mask.png');
   
-  const res = await fetch('http://localhost:5000/inpaint', {
+  const res = await fetch('http://127.0.0.1:5000/inpaint', {
     method: 'POST',
     body: formData
   });
