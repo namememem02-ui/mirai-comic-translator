@@ -2782,6 +2782,8 @@ async function renderTypesetImage(renderToken = pageRenderGuard.current()) {
     } catch (err) {
       if (!pageRenderGuard.isCurrent(renderToken)) return;
       console.warn('[⚠️] AI Inpainting unavailable. Keeping the original image:', err.message);
+      initBgSampler();
+      renderTypesetTextLayer(renderToken);
     }
   }
 

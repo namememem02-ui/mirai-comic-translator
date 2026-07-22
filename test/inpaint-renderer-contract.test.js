@@ -19,3 +19,12 @@ test('automatic rendering never calls blocky smooth erase fallback', () => {
   assert.equal(calls.length, 1, 'drawSmoothErase should remain defined but never called automatically');
   assert.doesNotMatch(script, /Falling back to smooth/);
 });
+
+test('preview still draws translated text when LaMa is unavailable', () => {
+  const warningIndex = script.indexOf('AI Inpainting unavailable. Keeping the original image:');
+  assert.notEqual(warningIndex, -1);
+  const catchEnd = script.indexOf('\n    }\n  }', warningIndex);
+  const unavailableBranch = script.slice(warningIndex, catchEnd);
+
+  assert.match(unavailableBranch, /renderTypesetTextLayer\(renderToken\)/);
+});
