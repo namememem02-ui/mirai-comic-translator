@@ -45,6 +45,20 @@ test('renderLamaComponentSection generates structured HTML view with accessibili
   assert.ok(view.includes('data-action="remove"'));
 });
 
+test('renderLamaComponentSection inspects hardware.nvidia object (driverVersion and compatibility)', () => {
+  const view = renderLamaComponentSection({
+    state: 'not-installed',
+    hardware: {
+      nvidia: { present: true, compatible: true, driverVersion: '551.86' },
+    },
+    preferences: { mode: 'auto', fallback: 'automatic' },
+  });
+
+  assert.ok(view.includes('NVIDIA Driver v551.86'));
+  assert.ok(view.includes('รองรับ CUDA'));
+  assert.doesNotMatch(view, /<option value="nvidia"[^>]*disabled/);
+});
+
 test('renderLamaComponentSection includes progress elements during downloading', () => {
   const view = renderLamaComponentSection({
     state: 'downloading',

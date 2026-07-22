@@ -31,11 +31,20 @@ function renderLamaComponentSection(stateData = {}) {
   const progress = stateData?.progress || null;
   const fallbackNotice = stateData?.fallbackNotice || null;
 
-  const nvidiaInfo = hardware.nvidiaName
-    ? escapeHtml(hardware.nvidiaName)
-    : hardware.nvidiaAvailable
-    ? 'รองรับ NVIDIA CUDA'
-    : 'ไม่พบการ์ดจอ NVIDIA ที่รองรับ';
+  const nvidia = hardware.nvidia || {};
+  const isNvidiaAvailable = Boolean(hardware.nvidiaAvailable || nvidia.compatible);
+  const isNvidiaPresent = Boolean(hardware.nvidiaName || nvidia.present || nvidia.compatible);
+
+  let nvidiaInfo = 'ไม่พบการ์ดจอ NVIDIA';
+  if (hardware.nvidiaName) {
+    nvidiaInfo = escapeHtml(hardware.nvidiaName);
+  } else if (nvidia.driverVersion) {
+    nvidiaInfo = `NVIDIA Driver v${escapeHtml(nvidia.driverVersion)} (${isNvidiaAvailable ? 'รองรับ CUDA' : 'ไดรเวอร์เก่าเกินไป'})`;
+  } else if (isNvidiaAvailable) {
+    nvidiaInfo = 'รองรับ NVIDIA CUDA';
+  } else if (isNvidiaPresent) {
+    nvidiaInfo = 'พบการ์ดจอ NVIDIA';
+  }
 
   const isDownloading = st === 'downloading' || st === 'installing';
   const isInstalled = st === 'ready-cpu' || st === 'ready-nvidia' || st === 'ready-gpu' || st === 'update-available';
@@ -100,7 +109,7 @@ function renderLamaComponentSection(stateData = {}) {
           <select id="lama-pref-mode" class="input-select" data-pref="mode">
             <option value="auto" ${prefs.mode === 'auto' ? 'selected' : ''}>อัตโนมัติ (Auto) — แนะนำ</option>
             <option value="cpu" ${prefs.mode === 'cpu' ? 'selected' : ''}>ใช้ CPU เท่านั้น</option>
-            <option value="nvidia" ${prefs.mode === 'nvidia' ? 'selected' : ''} ${!hardware.nvidiaAvailable ? 'disabled' : ''}>ใช้ NVIDIA GPU เท่านั้น</option>
+            <option value="nvidia" ${prefs.mode === 'nvidia' ? 'selected' : ''} ${!isNvidiaAvailable ? 'disabled' : ''}>ใช้ NVIDIA GPU เท่านั้น</option>
           </select>
         </div>
 
