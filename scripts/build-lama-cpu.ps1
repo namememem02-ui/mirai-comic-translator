@@ -28,5 +28,9 @@ if (Test-Path $LocalModel) {
 }
 
 Write-Host "[+] Creating component staging complete."
+Write-Host "[+] Creating ZIP archive..."
+if (Test-Path $ZipTarget) { Remove-Item -Force $ZipTarget }
+Compress-Archive -Path "$BuildStageDir\*" -DestinationPath $ZipTarget -Force
+
 Write-Host "[+] Invoking manifest writer..."
 node (Join-Path $PSScriptRoot "write-lama-manifest.js") $ZipTarget
