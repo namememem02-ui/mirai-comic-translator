@@ -520,7 +520,7 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
 
   const prompt = buildTranslationPrompt(glossary);
 
-  const models = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash-latest'];
   let lastErr = null;
 
   for (const model of models) {

@@ -12,6 +12,6 @@ test('translation uses only current production Gemini fallback models', () => {
 
   assert.match(
     requestSource,
-    /const models = \['gemini-2\.5-flash', 'gemini-1\.5-flash'\]/
+    /const models = \['gemini-2\.0-flash', 'gemini-1\.5-flash-latest'\]/
   );
 });
