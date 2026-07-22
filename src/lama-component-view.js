@@ -34,12 +34,16 @@ function renderLamaComponentSection(stateData = {}) {
   const nvidia = hardware.nvidia || {};
   const isNvidiaAvailable = Boolean(hardware.nvidiaAvailable || nvidia.compatible);
   const isNvidiaPresent = Boolean(hardware.nvidiaName || nvidia.present || nvidia.compatible);
+  const gpuName = hardware.nvidiaName || nvidia.name || '';
+  const driverVer = nvidia.driverVersion || '';
 
   let nvidiaInfo = 'ไม่พบการ์ดจอ NVIDIA';
-  if (hardware.nvidiaName) {
-    nvidiaInfo = escapeHtml(hardware.nvidiaName);
-  } else if (nvidia.driverVersion) {
-    nvidiaInfo = `NVIDIA Driver v${escapeHtml(nvidia.driverVersion)} (${isNvidiaAvailable ? 'รองรับ CUDA' : 'ไดรเวอร์เก่าเกินไป'})`;
+  if (gpuName && driverVer) {
+    nvidiaInfo = `${escapeHtml(gpuName)} (Driver v${escapeHtml(driverVer)} — ${isNvidiaAvailable ? 'รองรับ CUDA' : 'ไดรเวอร์เก่าเกินไป'})`;
+  } else if (gpuName) {
+    nvidiaInfo = `${escapeHtml(gpuName)} (${isNvidiaAvailable ? 'รองรับ CUDA' : 'พบการ์ดจอ NVIDIA'})`;
+  } else if (driverVer) {
+    nvidiaInfo = `NVIDIA Driver v${escapeHtml(driverVer)} (${isNvidiaAvailable ? 'รองรับ CUDA' : 'ไดรเวอร์เก่าเกินไป'})`;
   } else if (isNvidiaAvailable) {
     nvidiaInfo = 'รองรับ NVIDIA CUDA';
   } else if (isNvidiaPresent) {
