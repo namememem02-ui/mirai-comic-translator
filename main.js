@@ -32,7 +32,7 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWin = null;
 const GEMINI_API_KEY_URL = 'https://aistudio.google.com/apikey';
-const UPDATE_MANIFEST_URL = process.env.MEE_A_RAI_COMIC_UPDATE_URL || '';
+const UPDATE_MANIFEST_URL = process.env.MEE_A_RAI_COMIC_UPDATE_URL || 'https://raw.githubusercontent.com/namememem02-ui/mirai-comic-translator/master/app-version.json';
 const updateChecker = createUpdateChecker({
   currentVersion: app.getVersion(),
   manifestUrl: UPDATE_MANIFEST_URL,
