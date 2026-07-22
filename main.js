@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, safeStorage, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, safeStorage, protocol, net, shell } = require('electron');
 const path = require('path');
 const { pathToFileURL } = require('node:url');
 const fs = require('fs');
@@ -29,6 +29,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 let mainWin = null;
+const GEMINI_API_KEY_URL = 'https://aistudio.google.com/apikey';
 const inpaintSidecar = createInpaintSidecarManager({
   projectRoot: __dirname,
   onStatus: status => {
@@ -138,6 +139,10 @@ app.on('window-all-closed', () => {
 
 ipcMain.handle('get-inpaint-status', () => inpaintSidecar.getStatus());
 ipcMain.handle('retry-inpaint-sidecar', () => inpaintSidecar.ensureStarted());
+ipcMain.handle('open-gemini-api-key-page', async () => {
+  await shell.openExternal(GEMINI_API_KEY_URL);
+  return { success: true };
+});
 
 const projectBackupHandlers = createProjectBackupIpcCoordinator({
   projectsDir: PROJECTS_DIR,

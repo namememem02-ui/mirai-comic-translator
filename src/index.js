@@ -140,6 +140,8 @@ const showApiKeyBtn          = document.getElementById('showApiKeyBtn');
 const saveApiKeyBtn          = document.getElementById('saveApiKeyBtn');
 const deleteApiKeyBtn        = document.getElementById('deleteApiKeyBtn');
 const saveApiKeyStatus       = document.getElementById('saveApiKeyStatus');
+const openGeminiApiKeyPageBtn = document.getElementById('openGeminiApiKeyPageBtn');
+const openGeminiApiKeyPageStatus = document.getElementById('openGeminiApiKeyPageStatus');
 const settingsFontSizeRange  = document.getElementById('settingsFontSizeRange');
 const settingsFontSizeVal    = document.getElementById('settingsFontSizeVal');
 const settingsFontSizeAuto   = document.getElementById('settingsFontSizeAuto');
@@ -480,6 +482,19 @@ deleteApiKeyBtn.addEventListener('click', async () => {
     saveApiKeyStatus.style.color = '#ef4444';
   }
   setTimeout(() => saveApiKeyStatus.textContent = '', 3000);
+});
+
+openGeminiApiKeyPageBtn.addEventListener('click', async () => {
+  openGeminiApiKeyPageBtn.disabled = true;
+  openGeminiApiKeyPageStatus.textContent = 'กำลังเปิด Google AI Studio...';
+  try {
+    await window.api.openGeminiApiKeyPage();
+    openGeminiApiKeyPageStatus.textContent = '';
+  } catch {
+    openGeminiApiKeyPageStatus.textContent = 'เปิดหน้า Google AI Studio ไม่สำเร็จ';
+  } finally {
+    openGeminiApiKeyPageBtn.disabled = false;
+  }
 });
 
 // Font Size slider in settings
