@@ -558,6 +558,11 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
       const responseData = await res.json().catch(() => ({}));
       if (!res.ok) {
         const msg = responseData?.error?.message || `HTTP ${res.status}`;
+        if (/quota|rate limit|RESOURCE_EXHAUSTED/i.test(msg) || res.status === 429) {
+          const matchSec = msg.match(/retry in ([\d\.]+)s/i);
+          const waitTime = matchSec ? Math.ceil(parseFloat(matchSec[1])) : 30;
+          throw new Error(`โควตา Gemini API ฟรีเต็มชั่วคราว (Rate Limit 15 คำขอ/นาที)\nกรุณาพักรอประมาณ ${waitTime} วินาที แล้วลองกดแปลอีกครั้งครับ`);
+        }
         if (/API key|invalid key/i.test(msg) || res.status === 403) {
           throw new Error(msg);
         }
