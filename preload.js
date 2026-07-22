@@ -8,6 +8,12 @@ contextBridge.exposeInMainWorld('api', {
   openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   getUpdateInfo: () => ipcRenderer.invoke('get-update-info'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadAndInstallUpdate: (downloadUrl) => ipcRenderer.invoke('download-and-install-update', downloadUrl),
+  onUpdateDownloadProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on('update-download-progress', listener);
+    return () => ipcRenderer.removeListener('update-download-progress', listener);
+  },
   backupProject: (args) => ipcRenderer.invoke('backup-project', args),
   inspectProjectBackup: () => ipcRenderer.invoke('inspect-project-backup'),
   confirmRestoreProject: (args) => ipcRenderer.invoke('confirm-restore-project', args),

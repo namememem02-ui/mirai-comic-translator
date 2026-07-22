@@ -190,6 +190,9 @@ ipcMain.handle('save-lama-preferences', async (_e, prefs) => getLamaManager().se
 
 ipcMain.handle('get-inpaint-status', () => inpaintSidecar.getStatus());
 ipcMain.handle('retry-inpaint-sidecar', () => inpaintSidecar.ensureStarted());
+const { spawn } = require('child_process');
+const { createUpdateInstaller } = require('./lib/update-installer');
+
 ipcMain.handle('open-gemini-api-key-page', async () => {
   await shell.openExternal(GEMINI_API_KEY_URL);
   return { success: true };
@@ -206,6 +209,25 @@ ipcMain.handle('get-update-info', () => ({
   configured: Boolean(UPDATE_MANIFEST_URL),
 }));
 ipcMain.handle('check-for-updates', () => updateChecker.check());
+ipcMain.handle('download-and-install-update', async (event, downloadUrl) => {
+  try {
+    const installer = createUpdateInstaller({
+      tempDir: app.getPath('temp'),
+      spawnImpl: spawn,
+      quitApp: () => app.quit(),
+    });
+    return await installer.downloadAndInstall({
+      downloadUrl,
+      onProgress: (progress) => {
+        if (event && event.sender) {
+          event.sender.send('update-download-progress', progress);
+        }
+      },
+    });
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
 
 const projectBackupHandlers = createProjectBackupIpcCoordinator({
   projectsDir: PROJECTS_DIR,

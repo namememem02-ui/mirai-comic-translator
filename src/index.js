@@ -444,17 +444,62 @@ function renderUpdateResult(result) {
         updateReleaseNotes.textContent = result.releaseNotes;
         updateReleaseNotes.hidden = false;
       }
-      if (result.downloadUrl && window.api && window.api.openExternalUrl) {
-        const downloadBtn = document.createElement('button');
-        downloadBtn.type = 'button';
-        downloadBtn.className = 'btn btn-primary';
-        downloadBtn.style.marginTop = '10px';
-        downloadBtn.textContent = `📥 ดาวน์โหลดเวอร์ชัน ${result.latestVersion}`;
-        downloadBtn.addEventListener('click', () => {
-          window.api.openExternalUrl(result.downloadUrl);
+      if (result.downloadUrl && window.api) {
+        const btnContainer = document.createElement('div');
+        btnContainer.style.marginTop = '12px';
+        btnContainer.style.display = 'flex';
+        btnContainer.style.gap = '10px';
+        btnContainer.style.flexWrap = 'wrap';
+
+        const installBtn = document.createElement('button');
+        installBtn.type = 'button';
+        installBtn.className = 'btn btn-primary';
+        installBtn.textContent = `⚡ ติดตั้งอัปเดตเวอร์ชัน ${result.latestVersion} ทันที`;
+
+        const browserBtn = document.createElement('button');
+        browserBtn.type = 'button';
+        browserBtn.className = 'btn btn-secondary';
+        browserBtn.textContent = 'ดาวน์โหลดผ่านเบราว์เซอร์';
+        browserBtn.addEventListener('click', () => {
+          if (window.api.openExternalUrl) window.api.openExternalUrl(result.downloadUrl);
         });
+
+        const progressDiv = document.createElement('div');
+        progressDiv.style.marginTop = '10px';
+        progressDiv.style.width = '100%';
+        progressDiv.style.display = 'none';
+
+        installBtn.addEventListener('click', async () => {
+          installBtn.disabled = true;
+          browserBtn.disabled = true;
+          installBtn.textContent = 'กำลังดาวน์โหลดอัปเดต...';
+          progressDiv.style.display = 'block';
+          progressDiv.textContent = 'กำลังดาวน์โหลดอัปเดต: 0%';
+
+          if (window.api.onUpdateDownloadProgress) {
+            window.api.onUpdateDownloadProgress((p) => {
+              const mb = (p.receivedBytes / (1024 * 1024)).toFixed(1);
+              const totalMb = p.totalBytes > 0 ? (p.totalBytes / (1024 * 1024)).toFixed(1) : '?';
+              progressDiv.textContent = `กำลังดาวน์โหลดอัปเดต: ${p.percent}% (${mb} MB / ${totalMb} MB)`;
+            });
+          }
+
+          const res = await window.api.downloadAndInstallUpdate(result.downloadUrl);
+          if (res && res.success) {
+            progressDiv.textContent = '✅ ดาวน์โหลดเสร็จสมบูรณ์ กำลังเริ่มตัวติดตั้งและรีสตาร์ทโปรแกรม...';
+          } else {
+            installBtn.disabled = false;
+            browserBtn.disabled = false;
+            installBtn.textContent = `⚡ ติดตั้งอัปเดตเวอร์ชัน ${result.latestVersion} ทันที`;
+            progressDiv.textContent = `❌ ติดตั้งอัปเดตไม่สำเร็จ: ${(res && res.error) || 'ข้อผิดพลาดไม่ทราบสาเหตุ'}`;
+          }
+        });
+
+        btnContainer.appendChild(installBtn);
+        btnContainer.appendChild(browserBtn);
         updateReleaseNotes.appendChild(document.createElement('br'));
-        updateReleaseNotes.appendChild(downloadBtn);
+        updateReleaseNotes.appendChild(btnContainer);
+        updateReleaseNotes.appendChild(progressDiv);
       }
       break;
     case 'error':
