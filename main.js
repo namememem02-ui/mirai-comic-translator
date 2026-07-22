@@ -25,7 +25,7 @@ const { createSourceFolderRegistry } = require('./lib/source-folder-registry');
 const { createLocalAssetProtocol } = require('./lib/local-asset-protocol');
 
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'mirai-asset', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  { scheme: 'mirai-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
 let mainWin = null;

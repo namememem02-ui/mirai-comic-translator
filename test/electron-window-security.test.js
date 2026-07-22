@@ -11,6 +11,7 @@ test('registers and serves the secure local asset scheme', () => {
   assert.ok(registration >= 0 && registration < main.indexOf('app.whenReady()'));
   assert.match(main, /protocol\.handle\('mirai-asset'/);
   assert.match(main, /net\.fetch\(pathToFileURL\(assetPath\)\.toString\(\)\)/);
+  assert.match(main, /supportFetchAPI:\s*true,\s*corsEnabled:\s*true/);
 });
 
 test('enables Chromium security and denies popup and navigation escape', () => {
