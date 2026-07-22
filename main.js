@@ -464,50 +464,66 @@ function safeParseJson(rawText) {
   let text = rawText.trim();
   text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
-  // Remove trailing commas before closing braces/brackets
-  text = text.replace(/,\s*([}\]])/g, '$1');
-
   try {
     return JSON.parse(text);
   } catch (initialErr) {
-    let openBrackets = 0;
-    let openBraces = 0;
-    let inString = false;
-    let escaped = false;
-
-    for (let i = 0; i < text.length; i += 1) {
-      const ch = text[i];
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-      if (ch === '\\') {
-        escaped = true;
-        continue;
-      }
-      if (ch === '"') {
-        inString = !inString;
-        continue;
-      }
-      if (!inString) {
-        if (ch === '{') openBraces += 1;
-        else if (ch === '}') openBraces -= 1;
-        else if (ch === '[') openBrackets += 1;
-        else if (ch === ']') openBrackets -= 1;
-      }
-    }
-
-    let repaired = text;
-    if (inString) repaired += '"';
-    repaired = repaired.replace(/,\s*$/, '');
-    while (openBrackets > 0) { repaired += ']'; openBrackets -= 1; }
-    while (openBraces > 0) { repaired += '}'; openBraces -= 1; }
-    repaired = repaired.replace(/,\s*([}\]])/g, '$1');
-
+    let cleaned = text.replace(/,\s*([}\]])/g, '$1');
     try {
-      return JSON.parse(repaired);
+      return JSON.parse(cleaned);
     } catch {
-      throw initialErr;
+      let openBrackets = 0;
+      let openBraces = 0;
+      let inString = false;
+      let escaped = false;
+
+      for (let i = 0; i < cleaned.length; i += 1) {
+        const ch = cleaned[i];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (!inString) {
+          if (ch === '{') openBraces += 1;
+          else if (ch === '}') openBraces -= 1;
+          else if (ch === '[') openBrackets += 1;
+          else if (ch === ']') openBrackets -= 1;
+        }
+      }
+
+      let repaired = cleaned;
+      if (inString) repaired += '"';
+      repaired = repaired.replace(/,\s*$/, '');
+      while (openBrackets > 0) { repaired += ']'; openBrackets -= 1; }
+      while (openBraces > 0) { repaired += '}'; openBraces -= 1; }
+      repaired = repaired.replace(/,\s*([}\]])/g, '$1');
+
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        const bubbles = [];
+        const regex = /\{\s*"bubble_id"\s*:\s*(\d+)\s*,\s*"box_2d"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*"original_text"\s*:\s*"([^"]*)"\s*,\s*"translated_text"\s*:\s*"([^"]*)"\s*\}/g;
+        let match;
+        while ((match = regex.exec(rawText)) !== null) {
+          bubbles.push({
+            bubble_id: parseInt(match[1], 10),
+            box_2d: [parseInt(match[2], 10), parseInt(match[3], 10), parseInt(match[4], 10), parseInt(match[5], 10)],
+            original_text: match[6],
+            translated_text: match[7]
+          });
+        }
+        if (bubbles.length > 0) {
+          return { bubbles };
+        }
+        throw initialErr;
+      }
     }
   }
 }
