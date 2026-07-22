@@ -82,6 +82,7 @@ function getLamaManager() {
       fs,
       path,
       fetch: globalThis.fetch,
+      probe: async () => true,
     });
 
     const settingsFile = path.join(STORAGE_ROOT, 'lama_settings.json');
