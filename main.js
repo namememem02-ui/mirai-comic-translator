@@ -255,7 +255,6 @@ ipcMain.handle('save-lama-preferences', async (_e, prefs) => getLamaManager().se
 
 ipcMain.handle('get-inpaint-status', () => inpaintSidecar.getStatus());
 ipcMain.handle('retry-inpaint-sidecar', () => inpaintSidecar.ensureStarted());
-const { spawn } = require('child_process');
 const { createUpdateInstaller } = require('./lib/update-installer');
 
 ipcMain.handle('open-gemini-api-key-page', async () => {
