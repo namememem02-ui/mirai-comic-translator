@@ -444,6 +444,18 @@ function renderUpdateResult(result) {
         updateReleaseNotes.textContent = result.releaseNotes;
         updateReleaseNotes.hidden = false;
       }
+      if (result.downloadUrl && window.api && window.api.openExternalUrl) {
+        const downloadBtn = document.createElement('button');
+        downloadBtn.type = 'button';
+        downloadBtn.className = 'btn btn-primary';
+        downloadBtn.style.marginTop = '10px';
+        downloadBtn.textContent = `📥 ดาวน์โหลดเวอร์ชัน ${result.latestVersion}`;
+        downloadBtn.addEventListener('click', () => {
+          window.api.openExternalUrl(result.downloadUrl);
+        });
+        updateReleaseNotes.appendChild(document.createElement('br'));
+        updateReleaseNotes.appendChild(downloadBtn);
+      }
       break;
     case 'error':
       updateCheckStatus.textContent = `❌ ${result.message}`;

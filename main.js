@@ -194,6 +194,13 @@ ipcMain.handle('open-gemini-api-key-page', async () => {
   await shell.openExternal(GEMINI_API_KEY_URL);
   return { success: true };
 });
+ipcMain.handle('open-external-url', async (_e, url) => {
+  if (typeof url === 'string' && url.startsWith('https://')) {
+    await shell.openExternal(url);
+    return { success: true };
+  }
+  return { success: false };
+});
 ipcMain.handle('get-update-info', () => ({
   currentVersion: app.getVersion(),
   configured: Boolean(UPDATE_MANIFEST_URL),

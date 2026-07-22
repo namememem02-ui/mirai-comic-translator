@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('api', {
   getInpaintStatus: () => ipcRenderer.invoke('get-inpaint-status'),
   retryInpaintSidecar: () => ipcRenderer.invoke('retry-inpaint-sidecar'),
   openGeminiApiKeyPage: () => ipcRenderer.invoke('open-gemini-api-key-page'),
+  openExternalUrl: (url) => ipcRenderer.invoke('open-external-url', url),
   getUpdateInfo: () => ipcRenderer.invoke('get-update-info'),
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   backupProject: (args) => ipcRenderer.invoke('backup-project', args),
