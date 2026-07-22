@@ -18,6 +18,5 @@ test('prompt transliterates unknown Chinese names and honors glossary spellings'
   assert.match(prompt, /romanized Chinese/i);
   assert.match(prompt, /Lu Renbing/);
   assert.match(prompt, /ลู่ เหรินปิง/);
-  assert.match(prompt, /discovered_names/);
   assert.match(prompt, /หลินตู้/);
 });

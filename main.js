@@ -587,14 +587,30 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
         throw e;
       }
 
+      const finishReason = responseData.candidates?.[0]?.finishReason || '';
       const outputText = (responseData.candidates?.[0]?.content?.parts || [])
         .map(p => p.text || '')
         .join('')
         .trim();
 
+      if (!outputText) {
+        const reason = finishReason || 'empty response';
+        console.error('Gemini returned empty output. finishReason:', reason, 'full response:', JSON.stringify(responseData).slice(0, 500));
+        const e = new Error(`Gemini ตอบกลับว่างเปล่า (${reason}) — ลองกดแปลอีกครั้ง`);
+        e.retryNextModel = true;
+        throw e;
+      }
+
       try {
-        return safeParseJson(outputText);
+        const parsed = safeParseJson(outputText);
+        if (parsed === null) {
+          const e = new Error('Gemini ตอบกลับว่างเปล่า — ลองกดแปลอีกครั้ง');
+          e.retryNextModel = true;
+          throw e;
+        }
+        return parsed;
       } catch (err) {
+        if (err.retryNextModel) throw err;
         console.error('Failed to parse Gemini output as JSON:', outputText);
         throw new Error('Gemini ตอบกลับไม่ได้โครงสร้าง JSON ที่ถูกต้อง: ' + err.message);
       }

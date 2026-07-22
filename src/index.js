@@ -2656,10 +2656,6 @@ translatePageBtn.addEventListener('click', async () => {
     renderPageTranslation();
     if (isPreviewMode) refreshTypesetView();
     updateProjectStats();
-    
-    if (!activePageTranslation || activePageTranslation.length === 0) {
-      alert('ไม่พบกล่องข้อความภาษาอังกฤษในภาพนี้ครับ');
-    }
   } catch (err) {
     alert(`การแปลล้มเหลว: ${err.message}`);
   } finally {
