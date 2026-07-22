@@ -24,7 +24,6 @@ const { resolveWithin, validatePathSegment, deriveProjectChapter } = require('./
 const { createSourceFolderRegistry } = require('./lib/source-folder-registry');
 const { createLocalAssetProtocol } = require('./lib/local-asset-protocol');
 const { createUpdateChecker } = require('./lib/update-checker');
-const { createLamaComponentManager } = require('./lib/lama-component-manager');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'mirai-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
