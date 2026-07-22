@@ -1376,14 +1376,15 @@ dropZone.addEventListener('dragleave', () => {
   dropZone.classList.remove('dragover');
 });
 
-dropZone.addEventListener('drop', (e) => {
+dropZone.addEventListener('drop', async (e) => {
   e.preventDefault();
   dropZone.classList.remove('dragover');
   
   const files = e.dataTransfer.files;
   if (files.length > 0) {
     const folderPath = files[0].path;
-    loadFolder(folderPath);
+    const authorization = await window.api.authorizeSourceFolder(folderPath);
+    if (authorization?.authorized) loadFolder(authorization.folderPath || folderPath);
   }
 });
 
@@ -1731,8 +1732,7 @@ async function selectPage(idx) {
       if (!pageRenderGuard.isCurrent(renderToken)) return;
       if (maskRes && maskRes.exists) {
         const maskImg = new Image();
-        const formattedPath = maskRes.absolutePath.replace(/\\/g, '/');
-        maskImg.src = `file:///${formattedPath}`;
+        maskImg.src = maskRes.fileUrl;
         maskImg.onload = () => {
           if (!pageRenderGuard.isCurrent(renderToken)) return;
           ctx.drawImage(maskImg, 0, 0);
@@ -1751,8 +1751,7 @@ async function selectPage(idx) {
       if (!pageRenderGuard.isCurrent(renderToken)) return;
       if (paintRes && paintRes.exists) {
         const paintImg = new Image();
-        const formattedPath = paintRes.absolutePath.replace(/\\/g, '/');
-        paintImg.src = `file:///${formattedPath}`;
+        paintImg.src = paintRes.fileUrl;
         paintImg.onload = () => {
           if (!pageRenderGuard.isCurrent(renderToken)) return;
           pctx.drawImage(paintImg, 0, 0);
@@ -3394,8 +3393,7 @@ async function composeReviewPage(imgObj, translation) {
       project: currentProject, chapter: currentChapter, pageName: imgObj.name,
     });
     if (paint?.exists) {
-      const paintPath = paint.absolutePath.replace(/\\/g, '/');
-      const paintImage = await loadImageElement(`file:///${paintPath}`);
+      const paintImage = await loadImageElement(paint.fileUrl);
       context.drawImage(paintImage, 0, 0);
     }
   } catch (err) {}
@@ -4185,8 +4183,7 @@ async function runExport(indicesToExport) {
         });
         if (paintRes && paintRes.exists) {
           const paintImg = new Image();
-          const formattedPath = paintRes.absolutePath.replace(/\\/g, '/');
-          paintImg.src = `file:///${formattedPath}`;
+          paintImg.src = paintRes.fileUrl;
           await new Promise(resolve => { paintImg.onload = resolve; paintImg.onerror = resolve; });
           ctx.drawImage(paintImg, 0, 0);
         }

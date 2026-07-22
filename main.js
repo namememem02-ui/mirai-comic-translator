@@ -1,5 +1,6 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, safeStorage, protocol, net } = require('electron');
 const path = require('path');
+const { pathToFileURL } = require('node:url');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
@@ -19,6 +20,13 @@ const {
 } = require('./lib/project-backup');
 const { createProjectBackupIpcCoordinator } = require('./lib/project-backup-ipc');
 const { createSecureApiKeyStore } = require('./lib/secure-api-key-store');
+const { resolveWithin, validatePathSegment, deriveProjectChapter } = require('./lib/safe-paths');
+const { createSourceFolderRegistry } = require('./lib/source-folder-registry');
+const { createLocalAssetProtocol } = require('./lib/local-asset-protocol');
+
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'mirai-asset', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 let mainWin = null;
 const inpaintSidecar = createInpaintSidecarManager({
@@ -44,12 +52,37 @@ const apiKeyStore = createSecureApiKeyStore({
 });
 
 const PROJECTS_DIR = path.join(__dirname, 'projects');
+const OUTPUT_DIR = path.join(__dirname, 'output');
 const watermarkStore = createWatermarkStore(PROJECTS_DIR);
 const chapterQualityStore = createChapterQualityStore(PROJECTS_DIR);
 
 // Ensure projects directory exists
 if (!fs.existsSync(PROJECTS_DIR)) {
   fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+}
+
+function loadTrustedSourceRoots() {
+  const roots = [];
+  for (const fileName of ['projects_map.json', 'last_project.json']) {
+    try {
+      const value = readJsonWithRecovery(resolveWithin(PROJECTS_DIR, fileName), {});
+      const candidates = fileName === 'projects_map.json' ? Object.values(value) : [value.lastFolderPath];
+      for (const candidate of candidates) {
+        if (typeof candidate === 'string' && path.isAbsolute(candidate) && fs.existsSync(candidate)) roots.push(candidate);
+      }
+    } catch {}
+  }
+  return roots;
+}
+
+const sourceFolders = createSourceFolderRegistry({ initialRoots: loadTrustedSourceRoots() });
+const assetProtocol = createLocalAssetProtocol({
+  path,
+  allowedRoots: () => [PROJECTS_DIR, OUTPUT_DIR, ...sourceFolders.listRoots()],
+});
+
+function managedFile(root, ...segments) {
+  return resolveWithin(root, ...segments.map((segment) => validatePathSegment(segment)));
 }
 
 function createWindow() {
@@ -65,14 +98,28 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      webSecurity: false // Allow loading local files (file://) in <img> tags
+      webSecurity: true
     }
+  });
+
+  mainWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  const appEntryUrl = pathToFileURL(path.join(__dirname, 'src', 'index.html')).toString();
+  mainWin.webContents.on('will-navigate', (event, destinationUrl) => {
+    if (destinationUrl !== appEntryUrl) event.preventDefault();
   });
 
   mainWin.loadFile('src/index.html');
 }
 
 app.whenReady().then(() => {
+  protocol.handle('mirai-asset', request => {
+    try {
+      const assetPath = assetProtocol.resolveRequestUrl(request.url);
+      return net.fetch(pathToFileURL(assetPath).toString());
+    } catch {
+      return new Response('Forbidden', { status: 403 });
+    }
+  });
   createWindow();
   inpaintSidecar.ensureStarted();
 
@@ -129,7 +176,24 @@ ipcMain.handle('select-folder', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return null;
   }
-  return result.filePaths[0];
+  return sourceFolders.authorize(result.filePaths[0]);
+});
+
+ipcMain.handle('authorize-source-folder', async (_event, folderPath) => {
+  try {
+    const resolved = path.resolve(folderPath);
+    if (!path.isAbsolute(folderPath) || !fs.statSync(resolved).isDirectory()) return { authorized: false };
+    if (sourceFolders.isAuthorized(resolved)) return { authorized: true, folderPath: resolved };
+    const result = await dialog.showMessageBox(mainWin, {
+      type: 'question', buttons: ['อนุญาต', 'ยกเลิก'], defaultId: 0, cancelId: 1,
+      title: 'อนุญาตโฟลเดอร์รูปภาพ', message: 'อนุญาตให้ ComicTranslator อ่านรูปจากโฟลเดอร์นี้หรือไม่?',
+      detail: resolved,
+    });
+    if (result.response !== 0) return { authorized: false };
+    return { authorized: true, folderPath: sourceFolders.authorize(resolved) };
+  } catch {
+    return { authorized: false };
+  }
 });
 
 ipcMain.handle('select-watermark', async (_e, { project, chapter }) => {
@@ -139,12 +203,12 @@ ipcMain.handle('select-watermark', async (_e, { project, chapter }) => {
   });
   if (result.canceled || result.filePaths.length === 0) return { canceled: true };
   const saved = watermarkStore.importAsset(project, chapter, result.filePaths[0]);
-  return { ...saved, fileUrl: `file:///${saved.absolutePath.replace(/\\/g, '/')}` };
+  return { ...saved, fileUrl: assetProtocol.urlForPath(saved.absolutePath) };
 });
 
 ipcMain.handle('load-watermark', (_e, { project, chapter }) => {
   const saved = watermarkStore.load(project, chapter);
-  return { ...saved, fileUrl: saved.exists ? `file:///${saved.absolutePath.replace(/\\/g, '/')}` : '' };
+  return { ...saved, fileUrl: saved.exists ? assetProtocol.urlForPath(saved.absolutePath) : '' };
 });
 
 ipcMain.handle('save-watermark-settings', (_e, { project, chapter, settings }) =>
@@ -170,6 +234,7 @@ ipcMain.handle('get-config', () => {
 
 ipcMain.handle('read-folder', (_e, folderPath) => {
   try {
+    if (!sourceFolders.isAuthorized(folderPath)) return { error: 'ยังไม่ได้อนุญาตโฟลเดอร์นี้' };
     if (!fs.existsSync(folderPath)) return { error: 'โฟลเดอร์ไม่ถูกต้องหรือไม่มีอยู่จริง' };
     const stat = fs.statSync(folderPath);
     if (!stat.isDirectory()) return { error: 'เส้นทางนี้ไม่ใช่โฟลเดอร์' };
@@ -186,22 +251,13 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
         return {
           name: file,
           absolutePath: absolutePath,
-          fileUrl: `file:///${absolutePath.replace(/\\/g, '/')}`
+          fileUrl: assetProtocol.urlForPath(absolutePath)
         };
       });
 
     // Try to guess project and chapter name
     const folderName = path.basename(folderPath);
-    let project = 'default';
-    let chapter = '01';
-    
-    const match = folderName.match(/^([a-zA-Z0-9_\-]+)_([0-9\.\-]+)$/);
-    if (match) {
-      project = match[1];
-      chapter = match[2];
-    } else {
-      project = folderName.replace(/[^a-zA-Z0-9_\-]/g, '');
-    }
+    const { project, chapter } = deriveProjectChapter(folderName);
 
     try {
       const lastProjectFile = path.join(PROJECTS_DIR, 'last_project.json');
@@ -306,6 +362,7 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
 
 // IPC Translation call
 ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
+  if (!sourceFolders.isAuthorized(imagePath)) throw new Error('ไม่ได้รับอนุญาตให้อ่านไฟล์ภาพนี้');
   const sourceImage = nativeImage.createFromPath(imagePath);
   if (sourceImage.isEmpty()) {
     throw new Error('ไม่สามารถอ่านไฟล์ภาพสำหรับแปลได้');
@@ -347,14 +404,13 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
 // Local project save/load handlers
 ipcMain.handle('save-typeset-image', (_e, { project, chapter, pageName, dataUrl }) => {
   try {
-    const OUTPUT_DIR = path.join(__dirname, 'output');
-    const dir = path.join(OUTPUT_DIR, project, chapter);
+    const dir = resolveWithin(OUTPUT_DIR, project, chapter);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
-    const file = path.join(dir, pageName);
+    const file = resolveWithin(dir, pageName);
     fs.writeFileSync(file, buffer);
     return { success: true, absolutePath: file };
   } catch (err) {
@@ -382,10 +438,10 @@ ipcMain.handle('save-facebook-archive', async (_e, { archiveName, files }) => {
 
 ipcMain.handle('save-page-translation', (_e, { project, chapter, pageName, translationData }) => {
   try {
-    const dir = path.join(PROJECTS_DIR, project, chapter);
+    const dir = resolveWithin(PROJECTS_DIR, project, chapter);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     
-    const file = path.join(dir, `${path.basename(pageName, path.extname(pageName))}.json`);
+    const file = resolveWithin(dir, `${validatePathSegment(path.basename(pageName, path.extname(pageName)))}.json`);
     writeJsonAtomic(file, translationData);
     return true;
   } catch (err) {
@@ -395,7 +451,7 @@ ipcMain.handle('save-page-translation', (_e, { project, chapter, pageName, trans
 
 ipcMain.handle('load-page-translation', (_e, { project, chapter, pageName }) => {
   try {
-    const file = path.join(PROJECTS_DIR, project, chapter, `${path.basename(pageName, path.extname(pageName))}.json`);
+    const file = resolveWithin(PROJECTS_DIR, project, chapter, `${validatePathSegment(path.basename(pageName, path.extname(pageName)))}.json`);
     if (fs.existsSync(file)) {
       return readJsonWithRecovery(file, null);
     }
@@ -423,10 +479,10 @@ ipcMain.handle('save-chapter-quality-state', (_e, { project, chapter, pageNames,
 
 ipcMain.handle('save-memory', (_e, { project, memoryData }) => {
   try {
-    const dir = path.join(PROJECTS_DIR, project);
+    const dir = resolveWithin(PROJECTS_DIR, project);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
-    const file = path.join(dir, 'memory.json');
+    const file = resolveWithin(dir, 'memory.json');
     writeJsonAtomic(file, memoryData);
     return true;
   } catch (err) {
@@ -436,7 +492,7 @@ ipcMain.handle('save-memory', (_e, { project, memoryData }) => {
 
 ipcMain.handle('load-memory', (_e, { project }) => {
   try {
-    const file = path.join(PROJECTS_DIR, project, 'memory.json');
+    const file = resolveWithin(PROJECTS_DIR, project, 'memory.json');
     if (fs.existsSync(file)) {
       return readJsonWithRecovery(file, {});
     }
@@ -446,11 +502,11 @@ ipcMain.handle('load-memory', (_e, { project }) => {
 
 ipcMain.handle('save-custom-mask', (_e, { project, chapter, pageName, dataUrl }) => {
   try {
-    const dir = path.join(PROJECTS_DIR, project, chapter);
+    const dir = resolveWithin(PROJECTS_DIR, project, chapter);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     const baseName = path.basename(pageName, path.extname(pageName));
-    const file = path.join(dir, `${baseName}_custom_mask.png`);
+    const file = resolveWithin(dir, `${validatePathSegment(baseName)}_custom_mask.png`);
 
     const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
@@ -465,9 +521,9 @@ ipcMain.handle('save-custom-mask', (_e, { project, chapter, pageName, dataUrl })
 ipcMain.handle('load-custom-mask', (_e, { project, chapter, pageName }) => {
   try {
     const baseName = path.basename(pageName, path.extname(pageName));
-    const file = path.join(PROJECTS_DIR, project, chapter, `${baseName}_custom_mask.png`);
+    const file = resolveWithin(PROJECTS_DIR, project, chapter, `${validatePathSegment(baseName)}_custom_mask.png`);
     if (fs.existsSync(file)) {
-      return { exists: true, absolutePath: file };
+      return { exists: true, absolutePath: file, fileUrl: assetProtocol.urlForPath(file) };
     }
     return { exists: false };
   } catch (err) {
@@ -478,7 +534,7 @@ ipcMain.handle('load-custom-mask', (_e, { project, chapter, pageName }) => {
 ipcMain.handle('clear-custom-mask', (_e, { project, chapter, pageName }) => {
   try {
     const baseName = path.basename(pageName, path.extname(pageName));
-    const file = path.join(PROJECTS_DIR, project, chapter, `${baseName}_custom_mask.png`);
+    const file = resolveWithin(PROJECTS_DIR, project, chapter, `${validatePathSegment(baseName)}_custom_mask.png`);
     if (fs.existsSync(file)) {
       fs.unlinkSync(file);
     }
@@ -490,11 +546,11 @@ ipcMain.handle('clear-custom-mask', (_e, { project, chapter, pageName }) => {
 
 ipcMain.handle('save-custom-paint', (_e, { project, chapter, pageName, dataUrl }) => {
   try {
-    const dir = path.join(PROJECTS_DIR, project, chapter);
+    const dir = resolveWithin(PROJECTS_DIR, project, chapter);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     const baseName = path.basename(pageName, path.extname(pageName));
-    const file = path.join(dir, `${baseName}_custom_paint.png`);
+    const file = resolveWithin(dir, `${validatePathSegment(baseName)}_custom_paint.png`);
 
     const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
@@ -509,9 +565,9 @@ ipcMain.handle('save-custom-paint', (_e, { project, chapter, pageName, dataUrl }
 ipcMain.handle('load-custom-paint', (_e, { project, chapter, pageName }) => {
   try {
     const baseName = path.basename(pageName, path.extname(pageName));
-    const file = path.join(PROJECTS_DIR, project, chapter, `${baseName}_custom_paint.png`);
+    const file = resolveWithin(PROJECTS_DIR, project, chapter, `${validatePathSegment(baseName)}_custom_paint.png`);
     if (fs.existsSync(file)) {
-      return { exists: true, absolutePath: file };
+      return { exists: true, absolutePath: file, fileUrl: assetProtocol.urlForPath(file) };
     }
     return { exists: false };
   } catch (err) {
@@ -522,7 +578,7 @@ ipcMain.handle('load-custom-paint', (_e, { project, chapter, pageName }) => {
 ipcMain.handle('clear-custom-paint', (_e, { project, chapter, pageName }) => {
   try {
     const baseName = path.basename(pageName, path.extname(pageName));
-    const file = path.join(PROJECTS_DIR, project, chapter, `${baseName}_custom_paint.png`);
+    const file = resolveWithin(PROJECTS_DIR, project, chapter, `${validatePathSegment(baseName)}_custom_paint.png`);
     if (fs.existsSync(file)) {
       fs.unlinkSync(file);
     }
@@ -576,8 +632,9 @@ ipcMain.handle('delete-project-mapping', (_e, { project, chapter }) => {
 
 ipcMain.handle('rename-chapter', async (_e, { project, oldChapter, newChapter, folderPath }) => {
   try {
-    const oldDir = path.join(PROJECTS_DIR, project, oldChapter);
-    const newDir = path.join(PROJECTS_DIR, project, newChapter);
+    if (!sourceFolders.isAuthorized(folderPath)) throw new Error('ไม่ได้รับอนุญาตให้ใช้โฟลเดอร์ต้นทางนี้');
+    const oldDir = resolveWithin(PROJECTS_DIR, project, oldChapter);
+    const newDir = resolveWithin(PROJECTS_DIR, project, newChapter);
     
     if (fs.existsSync(oldDir)) {
       if (!fs.existsSync(newDir)) {
@@ -585,7 +642,7 @@ ipcMain.handle('rename-chapter', async (_e, { project, oldChapter, newChapter, f
       }
       const files = fs.readdirSync(oldDir);
       for (const file of files) {
-        fs.renameSync(path.join(oldDir, file), path.join(newDir, file));
+        fs.renameSync(resolveWithin(oldDir, file), resolveWithin(newDir, file));
       }
       try {
         fs.rmdirSync(oldDir);
@@ -648,7 +705,7 @@ ipcMain.handle('load-app-settings', () => {
 // Delete a single page's translation JSON file
 ipcMain.handle('delete-page-translation', (_e, { project, chapter, pageName }) => {
   try {
-    const file = path.join(PROJECTS_DIR, project, chapter, `${path.basename(pageName, path.extname(pageName))}.json`);
+    const file = resolveWithin(PROJECTS_DIR, project, chapter, `${validatePathSegment(path.basename(pageName, path.extname(pageName)))}.json`);
     if (fs.existsSync(file)) {
       fs.unlinkSync(file);
     }
@@ -661,12 +718,12 @@ ipcMain.handle('delete-page-translation', (_e, { project, chapter, pageName }) =
 // List all saved translation JSON files for a project/chapter
 ipcMain.handle('list-chapter-translations', (_e, { project, chapter }) => {
   try {
-    const dir = path.join(PROJECTS_DIR, project, chapter);
+    const dir = resolveWithin(PROJECTS_DIR, project, chapter);
     if (!fs.existsSync(dir)) return [];
     const files = fs.readdirSync(dir)
       .filter(f => f.endsWith('.json') && !f.startsWith('_') && !f.startsWith('memory') && f !== 'glossary.json')
       .map(f => {
-        const filePath = path.join(dir, f);
+        const filePath = resolveWithin(dir, f);
         const stat = fs.statSync(filePath);
         let bubbleCount = 0;
         try {

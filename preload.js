@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('api', {
     return () => ipcRenderer.removeListener('inpaint-status-changed', listener);
   },
   selectFolder: () => ipcRenderer.invoke('select-folder'),
+  authorizeSourceFolder: (folderPath) => ipcRenderer.invoke('authorize-source-folder', folderPath),
   readFolder: (folderPath) => ipcRenderer.invoke('read-folder', folderPath),
   translatePage: (args) => ipcRenderer.invoke('translate-page', args),
   saveTypesetImage: (args) => ipcRenderer.invoke('save-typeset-image', args),
