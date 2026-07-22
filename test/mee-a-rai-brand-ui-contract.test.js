@@ -52,8 +52,8 @@ test('brand CSS fixes the mark at 39px idle and 166px expanded without responsiv
 test('branding leaves storage, backup, package, and project/output identifiers intact', () => {
   assert.equal(packageJson.name, 'comic-translator');
   assert.match(backupSource, /mirai-comictranslator-backup/);
-  assert.match(main, /path\.join\(__dirname,\s*['"]projects['"]\)/);
-  assert.match(main, /path\.join\(__dirname,\s*['"]output['"]\)/);
+  assert.match(main, /path\.join\([^)]*['"]projects['"]\)/);
+  assert.match(main, /path\.join\([^)]*['"]output['"]\)/);
   assert.match(main, /['"]app_settings\.json['"]/);
   assert.match(main, /['"]projects_map\.json['"]/);
   assert.match(main, /['"]last_project\.json['"]/);

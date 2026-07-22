@@ -84,14 +84,21 @@ const apiKeyStore = createSecureApiKeyStore({
   writeJson: writeJsonAtomic,
 });
 
-const PROJECTS_DIR = path.join(__dirname, 'projects');
-const OUTPUT_DIR = path.join(__dirname, 'output');
+const STORAGE_ROOT = (typeof app !== 'undefined' && app.isPackaged)
+  ? app.getPath('userData')
+  : __dirname;
+
+const PROJECTS_DIR = path.join(STORAGE_ROOT, 'projects');
+const OUTPUT_DIR = path.join(STORAGE_ROOT, 'output');
 const watermarkStore = createWatermarkStore(PROJECTS_DIR);
 const chapterQualityStore = createChapterQualityStore(PROJECTS_DIR);
 
-// Ensure projects directory exists
+// Ensure projects and output directories exist
 if (!fs.existsSync(PROJECTS_DIR)) {
   fs.mkdirSync(PROJECTS_DIR, { recursive: true });
+}
+if (!fs.existsSync(OUTPUT_DIR)) {
+  fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
 
 function loadTrustedSourceRoots() {
