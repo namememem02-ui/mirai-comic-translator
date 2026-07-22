@@ -541,10 +541,10 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
   }
 
   let imageSize = sourceImage.getSize();
-  if (imageSize.width > 1536) {
-    const scale = 1536 / imageSize.width;
+  if (imageSize.width > 2048) {
+    const scale = 2048 / imageSize.width;
     const targetHeight = Math.round(imageSize.height * scale);
-    sourceImage = sourceImage.resize({ width: 1536, height: targetHeight, quality: 'better' });
+    sourceImage = sourceImage.resize({ width: 2048, height: targetHeight, quality: 'best' });
     imageSize = sourceImage.getSize();
   }
 
@@ -571,7 +571,7 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
       height: tile.height,
     });
     const result = await requestGeminiTranslation({
-      data: usePng ? croppedImage.toPNG() : croppedImage.toJPEG(85),
+      data: usePng ? croppedImage.toPNG() : croppedImage.toJPEG(92),
       mimeType,
       glossary,
     });
