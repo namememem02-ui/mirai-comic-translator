@@ -4927,3 +4927,69 @@ function drawColorPaintStroke(x, y, isMove = false) {
   lastPaintX = x;
   lastPaintY = y;
 }
+
+function initLamaComponentUI() {
+  const badgeEl = document.getElementById('lama-header-badge');
+  const panelEl = document.getElementById('lama-settings-panel');
+  if (!window.api || !window.LamaComponentView) return;
+
+  function updateUI(stateData) {
+    if (badgeEl) {
+      const badgeInfo = window.LamaComponentView.renderHeaderLamaBadge(stateData);
+      badgeEl.className = `status-text ${badgeInfo.class}`;
+      badgeEl.textContent = badgeInfo.label;
+    }
+    if (panelEl) {
+      panelEl.innerHTML = window.LamaComponentView.renderLamaComponentSection(stateData);
+      attachPanelEvents();
+    }
+  }
+
+  function attachPanelEvents() {
+    if (!panelEl) return;
+    const modeSelect = panelEl.querySelector('#lama-pref-mode');
+    const fallbackSelect = panelEl.querySelector('#lama-pref-fallback');
+    if (modeSelect && fallbackSelect) {
+      const savePrefs = () => {
+        window.api.saveLamaPreferences({
+          mode: modeSelect.value,
+          fallback: fallbackSelect.value,
+        });
+      };
+      modeSelect.addEventListener('change', savePrefs);
+      fallbackSelect.addEventListener('change', savePrefs);
+    }
+
+    panelEl.querySelectorAll('[data-action]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const action = btn.getAttribute('data-action');
+        const mode = modeSelect ? modeSelect.value : 'auto';
+        const backend = mode === 'nvidia' ? 'nvidia' : 'cpu';
+
+        if (action === 'install') {
+          await window.api.installLamaComponent(backend);
+        } else if (action === 'cancel') {
+          await window.api.cancelLamaComponentDownload();
+        } else if (action === 'repair') {
+          await window.api.repairLamaComponent(backend);
+        } else if (action === 'remove') {
+          await window.api.removeLamaComponent(backend);
+        }
+      });
+    });
+  }
+
+  if (window.api.getLamaComponentState) {
+    window.api.getLamaComponentState().then(updateUI).catch(() => {});
+  }
+  if (window.api.onLamaComponentState) {
+    window.api.onLamaComponentState(updateUI);
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initLamaComponentUI);
+} else {
+  initLamaComponentUI();
+}
+

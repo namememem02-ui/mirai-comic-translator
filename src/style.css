@@ -2066,3 +2066,127 @@ textarea:focus-visible,
 .inline-editor-status[hidden] {
   display: none;
 }
+
+/* LaMa Component Settings & Header Badges */
+.badge-ready-gpu {
+  background: #065f46;
+  color: #6ee7b7;
+  border: 1px solid #10b981;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.badge-ready-cpu {
+  background: #1e3a8a;
+  color: #93c5fd;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.badge-fallback {
+  background: #78350f;
+  color: #fde68a;
+  border: 1px solid #f59e0b;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+.badge-unavailable {
+  background: #334155;
+  color: #94a3b8;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+.lama-component-card {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.lama-component-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.lama-component-card h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #f8fafc;
+}
+.lama-version-tag {
+  font-size: 11px;
+  color: #94a3b8;
+}
+.hardware-summary {
+  background: #0f172a;
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.hw-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.hw-item:last-child {
+  margin-bottom: 0;
+}
+.hw-label {
+  color: #94a3b8;
+}
+.hw-value {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+.lama-preferences-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pref-field label {
+  display: block;
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+.lama-progress-container {
+  margin-bottom: 12px;
+}
+.lama-progress-label {
+  font-size: 11px;
+  color: #38bdf8;
+  margin-bottom: 4px;
+}
+.lama-progress-track {
+  height: 6px;
+  background: #0f172a;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.lama-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #3b82f6);
+  transition: width 0.2s ease;
+}
+.lama-fallback-notice {
+  background: #451a03;
+  border: 1px solid #f59e0b;
+  color: #fde68a;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.lama-actions-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+

@@ -33,7 +33,7 @@
       </div>
       <div id="inpaintStatus" class="key-status checking" title="สถานะระบบลบตัวอักษรต้นฉบับ">
         <span class="status-dot"></span>
-        <span class="status-text">กำลังเปิด AI รีทัช...</span>
+        <span id="lama-header-badge" class="status-text badge-unavailable">กำลังเปิด AI รีทัช...</span>
         <button id="retryInpaintBtn" type="button" title="ลองเปิด AI รีทัชอีกครั้ง" style="display:none;">ลองใหม่</button>
       </div>
       <button id="openSettingsBtn" style="background:#334155; border:1px solid #475569; color:#f8fafc; border-radius:6px; padding:5px 10px; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:5px;" title="ตั้งค่าโปรแกรม">⚙️ ตั้งค่า</button>
@@ -480,7 +480,8 @@
 
       <!-- Inpaint Mask Mode -->
       <section id="settingsPanelRetouch" class="settings-panel" role="tabpanel" aria-labelledby="settingsTabRetouch" data-settings-panel="retouch" hidden>
-        <div class="settings-panel-heading"><span>รีทัช</span><h3>ขอบเขตการลบข้อความ</h3><p>เลือกพื้นที่ที่ LaMa ใช้ลบตัวอักษรต้นฉบับ</p></div>
+        <div class="settings-panel-heading"><span>รีทัช</span><h3>ขอบเขตการลบข้อความ และจัดการ AI Component</h3><p>เลือกพื้นที่การลบข้อความ และดาวน์โหลด/จัดการ LaMa Component</p></div>
+      <div id="lama-settings-panel" class="settings-section"></div>
       <div class="settings-section">
         <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🎯 โหมด AI Inpaint Mask</label>
         <select id="settingsInpaintMode" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:8px 10px; font-size:13px; cursor:pointer;">
@@ -652,6 +653,7 @@
   <script src="chapter-find-replace.js"></script>
   <script src="mee-a-rai-brand.js"></script>
   <script src="settings-tabs.js"></script>
+  <script src="lama-component-view.js"></script>
   <script src="index.js"></script>
 </body>
 </html>
