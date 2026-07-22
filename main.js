@@ -79,7 +79,7 @@ function getLamaManager() {
     });
 
     const installer = createLamaComponentInstaller({
-      fs,
+      fs: fs.promises,
       path,
       fetch: globalThis.fetch,
       probe: async () => true,
