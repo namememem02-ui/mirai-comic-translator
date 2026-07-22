@@ -600,11 +600,7 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
   }
 
   const imageSize = sourceImage.getSize();
-  const tiles = planTranslationTiles(imageSize.width, imageSize.height, {
-    maxAspectRatio: 1.5,
-    coreHeightInWidths: 1.5,
-    overlapInWidths: 0.25,
-  });
+  const tiles = planTranslationTiles(imageSize.width, imageSize.height);
   const ext = path.extname(imagePath).toLowerCase();
   const originalMimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
 

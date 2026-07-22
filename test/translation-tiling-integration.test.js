@@ -24,7 +24,7 @@ test('translate-page preserves the original path and sequences tall-page tiles',
   );
 
   assert.match(handler, /nativeImage\.createFromPath\(imagePath\)/);
-  assert.match(handler, /planTranslationTiles\(imageSize\.width, imageSize\.height/);
+  assert.match(handler, /planTranslationTiles\(imageSize\.width, imageSize\.height\)/);
   assert.match(handler, /if \(tiles\[0\]\.isFullPage\)/);
   assert.match(handler, /fs\.readFileSync\(imagePath\)/);
   assert.match(handler, /for \(const tile of tiles\)/);
