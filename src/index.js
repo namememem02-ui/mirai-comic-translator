@@ -4935,13 +4935,14 @@ function initLamaComponentUI() {
   if (!window.api || !window.LamaComponentView) return;
 
   function updateUI(stateData) {
+    const data = stateData && typeof stateData === 'object' ? stateData : {};
     if (badgeEl) {
-      const badgeInfo = window.LamaComponentView.renderHeaderLamaBadge(stateData);
+      const badgeInfo = window.LamaComponentView.renderHeaderLamaBadge(data);
       badgeEl.className = `status-text ${badgeInfo.class}`;
       badgeEl.textContent = badgeInfo.label;
     }
     if (panelEl) {
-      panelEl.innerHTML = window.LamaComponentView.renderLamaComponentSection(stateData);
+      panelEl.innerHTML = window.LamaComponentView.renderLamaComponentSection(data);
       attachPanelEvents();
     }
   }
@@ -4980,9 +4981,16 @@ function initLamaComponentUI() {
     });
   }
 
+  // Render initial default UI immediately so the panel is never empty
+  updateUI({});
+
   window.refreshLamaUI = function refreshLamaUI() {
     if (window.api && window.api.getLamaComponentState) {
-      window.api.getLamaComponentState().then(updateUI).catch(() => {});
+      window.api.getLamaComponentState().then(updateUI).catch(() => {
+        updateUI({});
+      });
+    } else {
+      updateUI({});
     }
   };
 
