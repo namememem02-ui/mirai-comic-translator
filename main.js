@@ -541,7 +541,12 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
   }
 
   let imageSize = sourceImage.getSize();
-  if (imageSize.width > 2048) {
+  if (imageSize.width < 1200) {
+    const scale = 1200 / imageSize.width;
+    const targetHeight = Math.round(imageSize.height * scale);
+    sourceImage = sourceImage.resize({ width: 1200, height: targetHeight, quality: 'best' });
+    imageSize = sourceImage.getSize();
+  } else if (imageSize.width > 2048) {
     const scale = 2048 / imageSize.width;
     const targetHeight = Math.round(imageSize.height * scale);
     sourceImage = sourceImage.resize({ width: 2048, height: targetHeight, quality: 'best' });
