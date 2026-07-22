@@ -50,6 +50,17 @@ test('compares dotted NVIDIA driver versions numerically', async () => {
   });
 });
 
+test('rejects oversized and numeric-overflow driver components', async () => {
+  for (const driverVersion of ['531.1234567890123', '531.999999999999999999999999999999999999']) {
+    const result = await createDetector({
+      execFile: async () => ({ stdout: `NVIDIA GeForce RTX 4090, ${driverVersion}\n`, stderr: '' }),
+    }).detect('C:\\components');
+    assert.deepEqual(result.nvidia, {
+      present: false, driverVersion: '', compatible: false, reason: 'invalid-output',
+    });
+  }
+});
+
 test('does not treat malformed nvidia-smi output as usable hardware', async () => {
   const result = await createDetector({
     execFile: async () => ({ stdout: 'NVIDIA GeForce RTX 4090, driver=newest\n', stderr: '' }),
@@ -79,11 +90,26 @@ test('uses execFile arguments without a shell and returns bounded public diagnos
     execFile: async (...args) => { call = args; throw Object.assign(new Error('C:\\Users\\private\\secret-token'), { code: 'EACCES' }); },
   }).detect('C:\\components');
 
-  assert.deepEqual(call, ['nvidia-smi', ['--query-gpu=name,driver_version', '--format=csv,noheader']]);
+  assert.deepEqual(call, [
+    'nvidia-smi',
+    ['--query-gpu=name,driver_version', '--format=csv,noheader'],
+    { timeout: 3000, windowsHide: true },
+  ]);
   assert.deepEqual(result, {
     platform: 'win32', arch: 'x64', freeBytes: 0,
     nvidia: { present: false, driverVersion: '', compatible: false, reason: 'not-detected' },
   });
   assert.equal(JSON.stringify(result).includes('private'), false);
   assert.equal(JSON.stringify(result).includes('secret-token'), false);
+});
+
+test('normalizes a timed out NVIDIA probe to a safe unavailable result', async () => {
+  const result = await createDetector({
+    execFile: async () => { throw Object.assign(new Error('timed out at C:\\Users\\private'), { code: 'ETIMEDOUT' }); },
+  }).detect('C:\\components');
+
+  assert.deepEqual(result.nvidia, {
+    present: false, driverVersion: '', compatible: false, reason: 'not-detected',
+  });
+  assert.equal(JSON.stringify(result).includes('private'), false);
 });
