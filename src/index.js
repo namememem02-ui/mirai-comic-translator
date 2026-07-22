@@ -132,6 +132,7 @@ let zoomLevel = 1.0;
 // New DOM Element References (added in Phase 5)
 const openSettingsBtn   = document.getElementById('openSettingsBtn');
 const settingsDialog    = document.getElementById('settingsDialog');
+const settingsTabs      = window.SettingsTabs.initSettingsTabs(settingsDialog);
 const closeSettingsBtn  = document.getElementById('closeSettingsBtn');
 const saveSettingsBtn   = document.getElementById('saveSettingsBtn');
 const settingsSaveStatus     = document.getElementById('settingsSaveStatus');

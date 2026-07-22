@@ -1554,6 +1554,144 @@ textarea:focus-visible,
 .export-surface::backdrop {
   background: rgba(3, 5, 8, 0.8);
 }
+#settingsDialog {
+  width: min(920px, calc(100vw - 48px));
+  height: min(720px, calc(100vh - 48px));
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+#settingsDialog[open] { display: grid; }
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--surface-0);
+}
+.settings-header h2 { margin: 3px 0 0; color: var(--ink-strong); font-size: 19px; }
+.settings-kicker,
+.settings-panel-heading > span {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .12em;
+}
+.settings-close-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+.settings-close-button:hover,
+.settings-close-button:focus-visible { color: var(--ink-strong); border-color: var(--rule-strong); }
+.settings-layout {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  min-height: 0;
+  background: var(--surface-1);
+}
+.settings-category-rail {
+  display: flex;
+  flex-direction: column;
+  padding: 12px 0;
+  border-right: 1px solid var(--rule);
+  background: var(--surface-0);
+}
+.settings-category-rail button {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  align-items: center;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: transparent;
+  color: var(--ink-muted);
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-category-rail button span { color: var(--ink-faint); font-size: 10px; font-variant-numeric: tabular-nums; }
+.settings-category-rail button:hover { color: var(--ink-strong); background: var(--surface-2); }
+.settings-category-rail button[aria-selected='true'] {
+  border-left-color: var(--accent);
+  background: var(--accent-quiet);
+  color: var(--ink-strong);
+  font-weight: 700;
+}
+.settings-category-rail button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.settings-content {
+  min-width: 0;
+  min-height: 0;
+  padding: 24px 28px 32px;
+  overflow-y: auto;
+  background: var(--surface-1);
+}
+.settings-panel[hidden] { display: none; }
+.settings-panel { max-width: 650px; }
+.settings-panel-heading {
+  margin-bottom: 22px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--rule);
+}
+.settings-panel-heading h3 { margin: 5px 0 4px; color: var(--ink-strong); font-size: 22px; }
+.settings-panel-heading p { margin: 0; color: var(--ink-muted); font-size: 12px; }
+#settingsDialog .settings-section { padding: 0 0 20px; margin: 0 0 20px; }
+#settingsDialog .settings-section:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+#settingsDialog input:not([type='range']),
+#settingsDialog select { min-height: 38px !important; }
+#settingsDialog .align-btn { min-height: 40px; }
+#settingsDialog .api-key-help { margin-top: 16px; padding: 16px 18px; }
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--rule);
+  background: var(--surface-0);
+}
+.settings-footer #saveSettingsBtn { min-height: 38px; padding-inline: 22px; }
+
+@media (max-width: 720px) {
+  #settingsDialog {
+    width: calc(100vw - 24px);
+    height: calc(100vh - 24px);
+  }
+  .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .settings-category-rail {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0;
+    border-right: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .settings-category-rail button {
+    flex: 0 0 auto;
+    grid-template-columns: 1fr;
+    min-width: 112px;
+    min-height: 48px;
+    padding: 6px 12px;
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+    text-align: center;
+  }
+  .settings-category-rail button span { display: none; }
+  .settings-category-rail button[aria-selected='true'] { border-bottom-color: var(--accent); }
+  .settings-content { padding: 20px 18px 28px; }
+  .settings-panel-heading h3 { font-size: 19px; }
+  .update-settings-row { align-items: stretch; flex-direction: column; }
+  #checkForUpdatesBtn { align-self: flex-start; }
+}
 .settings-surface > :first-child,
 .export-surface > :first-child {
   background: var(--surface-0);

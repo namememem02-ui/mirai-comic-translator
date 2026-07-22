@@ -364,14 +364,27 @@
   </dialog>
 
   <!-- Settings Dialog Modal -->
-  <dialog id="settingsDialog" class="settings-surface" style="background:#0f172a; border:1px solid #334155; border-radius:12px; padding:0; color:#f8fafc; width:520px; max-width:95vw; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
-    <div style="padding:20px 24px; border-bottom:1px solid #1e293b; display:flex; align-items:center; justify-content:space-between;">
-      <h2 style="margin:0; font-size:16px; font-weight:700;">⚙️ ตั้งค่าโปรแกรม</h2>
-      <button id="closeSettingsBtn" style="background:none; border:none; color:#94a3b8; font-size:20px; cursor:pointer; padding:0; line-height:1;">✕</button>
-    </div>
-    <div style="padding:20px 24px; display:flex; flex-direction:column; gap:20px; max-height:70vh; overflow-y:auto;">
+  <dialog id="settingsDialog" class="settings-surface" aria-labelledby="settingsDialogTitle">
+    <header class="settings-header">
+      <div>
+        <span class="settings-kicker">PREFERENCES</span>
+        <h2 id="settingsDialogTitle">ตั้งค่าโปรแกรม</h2>
+      </div>
+      <button id="closeSettingsBtn" class="settings-close-button" type="button" aria-label="ปิดหน้าต่างตั้งค่า">✕</button>
+    </header>
+    <div class="settings-layout">
+      <nav class="settings-category-rail" role="tablist" aria-label="หมวดการตั้งค่า">
+        <button id="settingsTabAi" type="button" role="tab" data-settings-tab="ai" aria-controls="settingsPanelAi" aria-selected="true"><span>01</span>บัญชี AI</button>
+        <button id="settingsTabAppearance" type="button" role="tab" data-settings-tab="appearance" aria-controls="settingsPanelAppearance" aria-selected="false" tabindex="-1"><span>02</span>หน้าตา</button>
+        <button id="settingsTabTypography" type="button" role="tab" data-settings-tab="typography" aria-controls="settingsPanelTypography" aria-selected="false" tabindex="-1"><span>03</span>ตัวอักษร</button>
+        <button id="settingsTabRetouch" type="button" role="tab" data-settings-tab="retouch" aria-controls="settingsPanelRetouch" aria-selected="false" tabindex="-1"><span>04</span>รีทัช</button>
+        <button id="settingsTabUpdates" type="button" role="tab" data-settings-tab="updates" aria-controls="settingsPanelUpdates" aria-selected="false" tabindex="-1"><span>05</span>อัปเดต</button>
+      </nav>
+      <main class="settings-content">
 
       <!-- API Key Section -->
+      <section id="settingsPanelAi" class="settings-panel" role="tabpanel" aria-labelledby="settingsTabAi" data-settings-panel="ai">
+        <div class="settings-panel-heading"><span>บัญชี AI</span><h3>เชื่อมต่อ Gemini</h3><p>จัดการ API Key ที่ใช้วิเคราะห์และแปลหน้าการ์ตูน</p></div>
       <div class="settings-section">
         <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🔑 Gemini API Key</label>
         <div style="display:flex; gap:8px;">
@@ -395,9 +408,10 @@
           <span id="openGeminiApiKeyPageStatus" role="status" aria-live="polite"></span>
         </div>
       </div>
+      </section>
 
-      <div style="border-top:1px solid #1e293b;"></div>
-
+      <section id="settingsPanelUpdates" class="settings-panel" role="tabpanel" aria-labelledby="settingsTabUpdates" data-settings-panel="updates" hidden>
+        <div class="settings-panel-heading"><span>อัปเดต</span><h3>เวอร์ชันโปรแกรม</h3><p>ตรวจสอบรุ่นใหม่โดยไม่ดาวน์โหลด LaMa ซ้ำในการอัปเดตทั่วไป</p></div>
       <div class="settings-section update-settings-section">
         <label>🔄 อัปเดตโปรแกรม</label>
         <div class="update-settings-row">
@@ -410,9 +424,10 @@
         <div id="updateCheckStatus" role="status" aria-live="polite"></div>
         <div id="updateReleaseNotes" hidden></div>
       </div>
+      </section>
 
-      <div style="border-top:1px solid #1e293b;"></div>
-
+      <section id="settingsPanelAppearance" class="settings-panel" role="tabpanel" aria-labelledby="settingsTabAppearance" data-settings-panel="appearance" hidden>
+        <div class="settings-panel-heading"><span>หน้าตา</span><h3>ขนาดส่วนติดต่อ</h3><p>ปรับความหนาแน่นของเมนูโดยไม่เปลี่ยนขนาดภาพการ์ตูน</p></div>
       <div class="settings-section">
         <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; margin-bottom:8px;">🔎 ขนาด UI</label>
         <select id="settingsUiScale" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:8px 10px; font-size:13px; cursor:pointer;">
@@ -422,9 +437,10 @@
         </select>
         <p style="margin:4px 0 0; font-size:11px; color:#64748b;">ขยายเมนูและตัวหนังสือ โดยไม่เปลี่ยนขนาดภาพการ์ตูน</p>
       </div>
+      </section>
 
-      <div style="border-top:1px solid #1e293b;"></div>
-
+      <section id="settingsPanelTypography" class="settings-panel" role="tabpanel" aria-labelledby="settingsTabTypography" data-settings-panel="typography" hidden>
+        <div class="settings-panel-heading"><span>ตัวอักษร</span><h3>ค่าเริ่มต้นงานแปล</h3><p>กำหนดรูปแบบข้อความสำหรับบอลลูนที่สร้างใหม่</p></div>
       <!-- Default Font Size -->
       <div class="settings-section">
         <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">📏 ขนาดอักษรเริ่มต้น</label>
@@ -460,8 +476,11 @@
           <button id="settingsAlignRight" data-align="right" class="align-btn" style="flex:1; background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:6px; padding:8px; font-size:16px; cursor:pointer;">⮕ ขวา</button>
         </div>
       </div>
+      </section>
 
       <!-- Inpaint Mask Mode -->
+      <section id="settingsPanelRetouch" class="settings-panel" role="tabpanel" aria-labelledby="settingsTabRetouch" data-settings-panel="retouch" hidden>
+        <div class="settings-panel-heading"><span>รีทัช</span><h3>ขอบเขตการลบข้อความ</h3><p>เลือกพื้นที่ที่ LaMa ใช้ลบตัวอักษรต้นฉบับ</p></div>
       <div class="settings-section">
         <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">🎯 โหมด AI Inpaint Mask</label>
         <select id="settingsInpaintMode" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:8px 10px; font-size:13px; cursor:pointer;">
@@ -470,12 +489,14 @@
         </select>
         <p style="margin:6px 0 0; font-size:11px; color:#475569;">Tight Fit: Mask ย่อเหลือ 60%×70% ของกรอบ เพื่อไม่ลบพื้นหลังรอบข้าง</p>
       </div>
+      </section>
 
+      </main>
     </div>
-    <div class="dialog-actions" style="padding:16px 24px; border-top:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center;">
+    <footer class="dialog-actions settings-footer">
       <span id="settingsSaveStatus" style="font-size:12px; color:#10b981;"></span>
       <button id="saveSettingsBtn" style="background:#10b981; border:none; color:#fff; border-radius:6px; padding:8px 20px; font-size:13px; cursor:pointer; font-weight:600;">✅ บันทึกการตั้งค่า</button>
-    </div>
+    </footer>
   </dialog>
 
   <dialog id="copyPreviousPageDialog" class="copy-previous-dialog settings-surface" aria-labelledby="copyPreviousTitle">
