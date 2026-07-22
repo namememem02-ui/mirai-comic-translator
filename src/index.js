@@ -5025,20 +5025,28 @@ function initLamaComponentUI() {
         const mode = modeSelect ? modeSelect.value : 'auto';
         const backend = mode === 'nvidia' ? 'nvidia' : 'cpu';
 
-        if (action === 'install') {
-          await window.api.installLamaComponent(backend).catch((err) => {
-            console.warn('Install LaMa component failed:', err);
-          });
-        } else if (action === 'cancel') {
-          await window.api.cancelLamaComponentDownload().catch(() => {});
-        } else if (action === 'repair') {
-          await window.api.repairLamaComponent(backend).catch((err) => {
-            console.warn('Repair LaMa component failed:', err);
-          });
-        } else if (action === 'remove') {
-          await window.api.removeLamaComponent(backend).catch((err) => {
-            console.warn('Remove LaMa component failed:', err);
-          });
+        btn.disabled = true;
+        const origText = btn.textContent;
+        try {
+          if (action === 'install') {
+            btn.textContent = '⏳ กำลังเริ่มการติดตั้ง...';
+            await window.api.installLamaComponent(backend);
+          } else if (action === 'cancel') {
+            btn.textContent = '⏳ กำลังยกเลิก...';
+            await window.api.cancelLamaComponentDownload();
+          } else if (action === 'repair') {
+            btn.textContent = '⏳ กำลังเริ่มการซ่อมแซม...';
+            await window.api.repairLamaComponent(backend);
+          } else if (action === 'remove') {
+            btn.textContent = '⏳ กำลังถอนการติดตั้ง...';
+            await window.api.removeLamaComponent(backend);
+          }
+        } catch (err) {
+          const msg = err && err.message ? err.message : 'เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์';
+          alert(`⚠️ ไม่สามารถดำเนินการได้: ${msg}`);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = origText;
         }
       });
     });
