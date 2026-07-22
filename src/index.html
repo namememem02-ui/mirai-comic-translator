@@ -398,6 +398,21 @@
 
       <div style="border-top:1px solid #1e293b;"></div>
 
+      <div class="settings-section update-settings-section">
+        <label>🔄 อัปเดตโปรแกรม</label>
+        <div class="update-settings-row">
+          <div>
+            <strong>เวอร์ชันที่ติดตั้ง: <span id="currentAppVersion">—</span></strong>
+            <p>ตรวจสอบ ComicTranslator เวอร์ชันใหม่ทางออนไลน์ โดยไม่ดาวน์โหลด LaMa ซ้ำในการอัปเดตทั่วไป</p>
+          </div>
+          <button id="checkForUpdatesBtn" type="button">ตรวจสอบอัปเดต</button>
+        </div>
+        <div id="updateCheckStatus" role="status" aria-live="polite"></div>
+        <div id="updateReleaseNotes" hidden></div>
+      </div>
+
+      <div style="border-top:1px solid #1e293b;"></div>
+
       <div class="settings-section">
         <label style="display:block; font-size:12px; font-weight:600; color:#94a3b8; margin-bottom:8px;">🔎 ขนาด UI</label>
         <select id="settingsUiScale" style="width:100%; background:#1e293b; border:1px solid #334155; color:#f8fafc; border-radius:6px; padding:8px 10px; font-size:13px; cursor:pointer;">

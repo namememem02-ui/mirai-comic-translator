@@ -1587,6 +1587,34 @@ textarea:focus-visible,
 }
 .settings-link-button:disabled { opacity: 0.6; cursor: wait; }
 #openGeminiApiKeyPageStatus { display: block; color: #f59e0b; }
+.update-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.update-settings-row p { margin: 4px 0 0; color: #64748b; font-size: 11px; }
+#checkForUpdatesBtn {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border: 1px solid #0284c7;
+  border-radius: 6px;
+  background: #0369a1;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+#checkForUpdatesBtn:disabled { opacity: 0.65; cursor: wait; }
+#updateCheckStatus { margin-top: 8px; color: #94a3b8; font-size: 12px; }
+#updateReleaseNotes {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-left: 3px solid #38bdf8;
+  background: #111c30;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
 .settings-section > label {
   color: var(--ink-strong) !important;
   font-size: var(--ui-control-font) !important;

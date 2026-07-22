@@ -142,6 +142,10 @@ const deleteApiKeyBtn        = document.getElementById('deleteApiKeyBtn');
 const saveApiKeyStatus       = document.getElementById('saveApiKeyStatus');
 const openGeminiApiKeyPageBtn = document.getElementById('openGeminiApiKeyPageBtn');
 const openGeminiApiKeyPageStatus = document.getElementById('openGeminiApiKeyPageStatus');
+const currentAppVersion = document.getElementById('currentAppVersion');
+const checkForUpdatesBtn = document.getElementById('checkForUpdatesBtn');
+const updateCheckStatus = document.getElementById('updateCheckStatus');
+const updateReleaseNotes = document.getElementById('updateReleaseNotes');
 const settingsFontSizeRange  = document.getElementById('settingsFontSizeRange');
 const settingsFontSizeVal    = document.getElementById('settingsFontSizeVal');
 const settingsFontSizeAuto   = document.getElementById('settingsFontSizeAuto');
@@ -413,6 +417,41 @@ function applySettingsToDialog() {
 let savedUiScale = 115;
 let settingsSaved = false;
 
+async function refreshUpdateInfo() {
+  try {
+    const info = await window.api.getUpdateInfo();
+    currentAppVersion.textContent = info.currentVersion;
+    if (!info.configured) updateCheckStatus.textContent = 'ยังไม่ได้ตั้งค่าเซิร์ฟเวอร์อัปเดต';
+  } catch {
+    currentAppVersion.textContent = 'ไม่ทราบ';
+  }
+}
+
+function renderUpdateResult(result) {
+  updateReleaseNotes.hidden = true;
+  updateReleaseNotes.textContent = '';
+  switch (result?.status) {
+    case 'not-configured':
+      updateCheckStatus.textContent = 'ยังไม่ได้ตั้งค่าเซิร์ฟเวอร์อัปเดต';
+      break;
+    case 'current':
+      updateCheckStatus.textContent = `✅ เป็นเวอร์ชันล่าสุดแล้ว (${result.currentVersion})`;
+      break;
+    case 'available':
+      updateCheckStatus.textContent = `⬆️ พบเวอร์ชันใหม่ ${result.latestVersion}`;
+      if (result.releaseNotes) {
+        updateReleaseNotes.textContent = result.releaseNotes;
+        updateReleaseNotes.hidden = false;
+      }
+      break;
+    case 'error':
+      updateCheckStatus.textContent = `❌ ${result.message}`;
+      break;
+    default:
+      updateCheckStatus.textContent = 'ตรวจสอบอัปเดตไม่สำเร็จ';
+  }
+}
+
 function applyUiScale(value) {
   appSettings.uiScale = window.UiScale.applyUiScale(document.documentElement, value);
   requestAnimationFrame(() => {
@@ -429,6 +468,7 @@ openSettingsBtn.addEventListener('click', () => {
   settingsSaved = false;
   applySettingsToDialog();
   settingsDialog.showModal();
+  refreshUpdateInfo();
 });
 
 closeSettingsBtn.addEventListener('click', () => { restoreSavedUiScale(); settingsDialog.close(); });
@@ -494,6 +534,21 @@ openGeminiApiKeyPageBtn.addEventListener('click', async () => {
     openGeminiApiKeyPageStatus.textContent = 'เปิดหน้า Google AI Studio ไม่สำเร็จ';
   } finally {
     openGeminiApiKeyPageBtn.disabled = false;
+  }
+});
+
+checkForUpdatesBtn.addEventListener('click', async () => {
+  checkForUpdatesBtn.disabled = true;
+  checkForUpdatesBtn.textContent = 'กำลังตรวจสอบ...';
+  updateCheckStatus.textContent = 'กำลังเชื่อมต่อเซิร์ฟเวอร์อัปเดต...';
+  updateReleaseNotes.hidden = true;
+  try {
+    renderUpdateResult(await window.api.checkForUpdates());
+  } catch {
+    renderUpdateResult({ status: 'error', message: 'ตรวจสอบอัปเดตไม่สำเร็จ' });
+  } finally {
+    checkForUpdatesBtn.disabled = false;
+    checkForUpdatesBtn.textContent = 'ตรวจสอบอัปเดต';
   }
 });
 

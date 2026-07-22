@@ -23,6 +23,7 @@ const { createSecureApiKeyStore } = require('./lib/secure-api-key-store');
 const { resolveWithin, validatePathSegment, deriveProjectChapter } = require('./lib/safe-paths');
 const { createSourceFolderRegistry } = require('./lib/source-folder-registry');
 const { createLocalAssetProtocol } = require('./lib/local-asset-protocol');
+const { createUpdateChecker } = require('./lib/update-checker');
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'mirai-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
@@ -30,6 +31,12 @@ protocol.registerSchemesAsPrivileged([
 
 let mainWin = null;
 const GEMINI_API_KEY_URL = 'https://aistudio.google.com/apikey';
+const UPDATE_MANIFEST_URL = process.env.MEE_A_RAI_COMIC_UPDATE_URL || '';
+const updateChecker = createUpdateChecker({
+  currentVersion: app.getVersion(),
+  manifestUrl: UPDATE_MANIFEST_URL,
+  fetchImpl: globalThis.fetch,
+});
 const inpaintSidecar = createInpaintSidecarManager({
   projectRoot: __dirname,
   onStatus: status => {
@@ -143,6 +150,11 @@ ipcMain.handle('open-gemini-api-key-page', async () => {
   await shell.openExternal(GEMINI_API_KEY_URL);
   return { success: true };
 });
+ipcMain.handle('get-update-info', () => ({
+  currentVersion: app.getVersion(),
+  configured: Boolean(UPDATE_MANIFEST_URL),
+}));
+ipcMain.handle('check-for-updates', () => updateChecker.check());
 
 const projectBackupHandlers = createProjectBackupIpcCoordinator({
   projectsDir: PROJECTS_DIR,
