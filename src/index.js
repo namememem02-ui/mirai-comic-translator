@@ -2652,9 +2652,14 @@ translatePageBtn.addEventListener('click', async () => {
     // Save translation
     await saveCurrentPageTranslation();
     
-    // Render results
+    // Render results on both sidebar and center canvas
     renderPageTranslation();
+    if (isPreviewMode) refreshTypesetView();
     updateProjectStats();
+    
+    if (!activePageTranslation || activePageTranslation.length === 0) {
+      alert('ไม่พบกล่องข้อความภาษาอังกฤษในภาพนี้ครับ');
+    }
   } catch (err) {
     alert(`การแปลล้มเหลว: ${err.message}`);
   } finally {
