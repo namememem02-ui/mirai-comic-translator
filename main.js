@@ -535,29 +535,15 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
 // IPC Translation call
 ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
   if (!sourceFolders.isAuthorized(imagePath)) throw new Error('ไม่ได้รับอนุญาตให้อ่านไฟล์ภาพนี้');
-  let sourceImage = nativeImage.createFromPath(imagePath);
+  const sourceImage = nativeImage.createFromPath(imagePath);
   if (sourceImage.isEmpty()) {
     throw new Error('ไม่สามารถอ่านไฟล์ภาพสำหรับแปลได้');
   }
 
-  let imageSize = sourceImage.getSize();
-  if (imageSize.width < 1200) {
-    const scale = 1200 / imageSize.width;
-    const targetHeight = Math.round(imageSize.height * scale);
-    sourceImage = sourceImage.resize({ width: 1200, height: targetHeight, quality: 'best' });
-    imageSize = sourceImage.getSize();
-  } else if (imageSize.width > 2048) {
-    const scale = 2048 / imageSize.width;
-    const targetHeight = Math.round(imageSize.height * scale);
-    sourceImage = sourceImage.resize({ width: 2048, height: targetHeight, quality: 'best' });
-    imageSize = sourceImage.getSize();
-  }
-
+  const imageSize = sourceImage.getSize();
   const tiles = planTranslationTiles(imageSize.width, imageSize.height);
   const ext = path.extname(imagePath).toLowerCase();
   const originalMimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
-  const usePng = ext === '.png';
-  const mimeType = usePng ? 'image/png' : 'image/jpeg';
 
   if (tiles[0].isFullPage) {
     return requestGeminiTranslation({
@@ -576,8 +562,8 @@ ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
       height: tile.height,
     });
     const result = await requestGeminiTranslation({
-      data: usePng ? croppedImage.toPNG() : croppedImage.toJPEG(92),
-      mimeType,
+      data: ext === '.png' ? croppedImage.toPNG() : croppedImage.toJPEG(100),
+      mimeType: originalMimeType,
       glossary,
     });
     tileEntries.push({ tile, result });
