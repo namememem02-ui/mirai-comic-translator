@@ -24,6 +24,9 @@
     "directories": {
       "output": "artifacts/installer"
     },
+    "asarUnpack": [
+      "sidecar/**/*"
+    ],
     "files": [
       "**/*",
       "!**/*.venv*",
