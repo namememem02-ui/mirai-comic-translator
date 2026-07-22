@@ -2634,6 +2634,11 @@ translatePageBtn.addEventListener('click', async () => {
   if (activeIndex === -1 || !images[activeIndex]) return;
   const activePage = images[activeIndex];
 
+  if (activePageTranslation.length > 0) {
+    const choice = confirm(`หน้านี้มีคำแปลเดิมอยู่แล้ว (${activePageTranslation.length} กล่องข้อความ)\nคุณต้องการแปลใหม่เพื่อแทนที่คำแปลเดิมใช่หรือไม่?`);
+    if (!choice) return;
+  }
+
   pushUndoState();
   translatePageBtn.disabled = true;
   translatePageBtn.textContent = '⏳ กำลังแปลหน้าการ์ตูน...';
