@@ -39,10 +39,12 @@ function createHarness(options = {}) {
   let installFailure = options.installFailure;
   let removeFailure = options.removeFailure;
   let inspectFailure = options.inspectFailure;
+  let inspectGate = options.inspectGate;
 
   const installer = {
     async inspect(backend) {
       calls.push(`inspect:${backend}`);
+      if (backend === 'cpu' && inspectGate) await inspectGate.promise;
       if (inspectFailure === backend) {
         const error = new Error(`secret path C:\\Users\\person\\${backend}`);
         if (options.inspectErrorCode !== null) error.code = options.inspectErrorCode || 'integrity-failed';
@@ -61,6 +63,7 @@ function createHarness(options = {}) {
       if (installFailure) throw new Error('C:\\Users\\person\\api-key=secret');
       const value = installed(pkg.backend, pkg.version);
       inventory.set(pkg.backend, value);
+      if (options.postInstallInspectFailure) inspectFailure = pkg.backend;
       return value;
     },
     async remove(backend) {
@@ -105,8 +108,9 @@ function createHarness(options = {}) {
     },
   };
   const sidecar = {
-    async start(backend) {
+    async start(backend, signal) {
       calls.push(`sidecar:start:${backend}`);
+      if (options.onStartSignal) options.onStartSignal(signal);
       if (options.sidecarGate) await options.sidecarGate.promise;
       if (options.startResults && options.startResults[backend]) return options.startResults[backend];
       const failure = options.startFailures && options.startFailures[backend];
@@ -114,7 +118,10 @@ function createHarness(options = {}) {
         ? { state: 'unavailable', errorCode: failure, message: 'unsafe details' }
         : { state: 'ready', backend };
     },
-    async stop(backend) { calls.push(`sidecar:stop:${backend}`); },
+    async stop(backend) {
+      calls.push(`sidecar:stop:${backend}`);
+      if (options.stopFailures && options.stopFailures[backend]) throw new Error('unsafe stop details');
+    },
     async shutdown() { calls.push('sidecar:shutdown'); },
   };
   const manager = createLamaComponentManager({
@@ -127,6 +134,7 @@ function createHarness(options = {}) {
     failInstall(value = true) { installFailure = value; },
     failRemove(value = true) { removeFailure = value; },
     failInspect(value) { inspectFailure = value; },
+    setInspectGate(value) { inspectGate = value; },
   };
 }
 
@@ -504,4 +512,99 @@ test('legacy per-backend sidecar uses shutdown when no stop method exists', asyn
   await harness.manager.startRetouch();
   await harness.manager.remove('cpu');
   assert.deepEqual(calls, ['start', 'shutdown']);
+});
+
+test('post-install inspection failure invalidates the activated backend', async () => {
+  const harness = createHarness({
+    cpuReady: true, mode: 'cpu', postInstallInspectFailure: true,
+  });
+  await harness.manager.initialize();
+  await assert.rejects(harness.manager.install('cpu'));
+  assert.equal(harness.manager.getState().state, 'error');
+  assert.equal(harness.manager.getState().componentVersion, undefined);
+  await harness.manager.startRetouch();
+  assert.equal(harness.manager.getState().state, 'cpu-download-required');
+  assert.equal(harness.calls.includes('sidecar:start:cpu'), false);
+});
+
+test('late legacy startup success after shutdown triggers a second best-effort cleanup', async () => {
+  const startup = deferred();
+  const calls = [];
+  let receivedSignal;
+  const legacySidecar = {
+    ensureStarted(backend, signal) {
+      calls.push(`start:${backend}`);
+      receivedSignal = signal;
+      return startup.promise;
+    },
+    async shutdown() { calls.push('shutdown'); },
+  };
+  const harness = createHarness({ cpuReady: true, mode: 'cpu', sidecar: legacySidecar });
+  await harness.manager.initialize();
+  const starting = harness.manager.startRetouch();
+  await new Promise((resolve) => setImmediate(resolve));
+  const shuttingDown = harness.manager.shutdown();
+  await assert.rejects(starting, { name: 'AbortError' });
+  await shuttingDown;
+  assert.equal(receivedSignal.aborted, true);
+  assert.equal(calls.filter((call) => call === 'shutdown').length, 1);
+  startup.resolve({ state: 'ready' });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.filter((call) => call === 'shutdown').length, 2);
+});
+
+test('shutdown cancellation during initialize inspection rejects instead of reporting repair', async () => {
+  const inspectGate = deferred();
+  const harness = createHarness({ cpuReady: true, inspectGate });
+  const initializing = harness.manager.initialize();
+  await new Promise((resolve) => setImmediate(resolve));
+  const shuttingDown = harness.manager.shutdown();
+  await assert.rejects(initializing, { name: 'AbortError' });
+  await shuttingDown;
+  assert.notEqual(harness.manager.getState().state, 'repair-required');
+  inspectGate.resolve();
+});
+
+test('shutdown cancellation during update inspection rejects instead of reporting repair', async () => {
+  const harness = createHarness({ cpuReady: true, mode: 'cpu' });
+  await harness.manager.initialize();
+  const inspectGate = deferred();
+  harness.setInspectGate(inspectGate);
+  const checking = harness.manager.check();
+  await new Promise((resolve) => setImmediate(resolve));
+  const shuttingDown = harness.manager.shutdown();
+  await assert.rejects(checking, { name: 'AbortError' });
+  await shuttingDown;
+  assert.notEqual(harness.manager.getState().state, 'repair-required');
+  inspectGate.resolve();
+});
+
+test('GPU stop rejection still preserves reason and completes automatic CPU fallback', async () => {
+  const harness = createHarness({
+    cpuReady: true, nvidiaReady: true, stopFailures: { nvidia: true },
+  });
+  await harness.manager.initialize();
+  await harness.manager.startRetouch();
+  await harness.manager.reportRuntimeFailure('cuda-out-of-memory');
+  assert.equal(harness.manager.getState().state, 'gpu-fallback');
+  assert.equal(harness.manager.getState().reason, 'cuda-out-of-memory');
+  assert.deepEqual(harness.manager.getState().sessionFallback, {
+    transition: 'GPU -> CPU', reason: 'cuda-out-of-memory',
+  });
+  assert.equal(harness.calls.includes('sidecar:start:cpu'), true);
+  assert.doesNotMatch(JSON.stringify(harness.manager.getState()), /unsafe stop/i);
+});
+
+test('shutdown supports stop-only adapters and attempts all cleanup actions', async () => {
+  const calls = [];
+  const harness = createHarness({
+    sidecars: {
+      cpu: { async stop() { calls.push('cpu'); throw new Error('stop failed'); } },
+      nvidia: { async stop() { calls.push('nvidia'); } },
+    },
+  });
+  await harness.manager.initialize();
+  await assert.doesNotReject(harness.manager.shutdown());
+  assert.deepEqual(calls, ['cpu', 'nvidia']);
+  assert.equal(harness.manager.subscribe(() => {}), false);
 });
