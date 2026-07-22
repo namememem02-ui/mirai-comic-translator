@@ -47,6 +47,11 @@ const inpaintSidecar = createInpaintSidecarManager({
   },
 });
 
+const { execFile, spawn } = require('child_process');
+const { createLamaMachineDetector } = require('./lib/lama-machine-detector');
+const { createLamaComponentInstaller } = require('./lib/lama-component-installer');
+const { createLamaComponentManager } = require('./lib/lama-component-manager');
+
 function validateBackend(backend) {
   if (backend !== 'cpu' && backend !== 'nvidia') {
     throw new Error('รองรับเฉพาะ backend "cpu" หรือ "nvidia" เท่านั้น');
@@ -58,14 +63,75 @@ let lamaManager = null;
 function getLamaManager() {
   if (!lamaManager) {
     const userDataPath = app.getPath('userData');
-    lamaManager = createLamaComponentManager({
-      rootDir: path.join(userDataPath, 'components', 'lama'),
-      sidecarAdapter: inpaintSidecar,
-      onState: state => {
-        if (mainWin && !mainWin.isDestroyed()) {
-          mainWin.webContents.send('lama-component-state-changed', state);
+    const root = path.join(userDataPath, 'components', 'lama');
+
+    const detector = createLamaMachineDetector({
+      execFile,
+      platform: process.platform,
+      arch: process.arch,
+      freeDisk: async (dirPath) => {
+        try {
+          const stats = fs.statfsSync ? fs.statfsSync(dirPath || userDataPath) : null;
+          return stats ? stats.bavail * stats.bsize : 10 * 1024 * 1024 * 1024;
+        } catch {
+          return 10 * 1024 * 1024 * 1024;
         }
       },
+    });
+
+    const installer = createLamaComponentInstaller({
+      fs,
+      path,
+      fetchImpl: fetch,
+    });
+
+    const settingsFile = path.join(STORAGE_ROOT, 'lama_settings.json');
+    const settingsStore = {
+      async load() {
+        if (fs.existsSync(settingsFile)) {
+          return readJsonWithRecovery(settingsFile, {});
+        }
+        return {};
+      },
+      async save(settings) {
+        writeJsonAtomic(settingsFile, settings);
+      },
+    };
+
+    const manifestFile = path.join(__dirname, 'lama-components.json');
+    const manifestLoader = {
+      async load() {
+        if (fs.existsSync(manifestFile)) {
+          return readJsonWithRecovery(manifestFile, null);
+        }
+        return {
+          schema: 1,
+          packages: [{
+            backend: 'cpu',
+            version: '1.0.0',
+            url: 'https://github.com/namememem02-ui/mirai-comic-translator/releases/download/v0.1.0/lama-cpu.zip',
+            bytes: 350000000,
+            sha256: '0'.repeat(64),
+            minAppVersion: '0.1.0',
+            archive: 'zip',
+          }],
+        };
+      },
+    };
+
+    lamaManager = createLamaComponentManager({
+      root,
+      detector,
+      installer,
+      manifestLoader,
+      settingsStore,
+      sidecar: inpaintSidecar,
+    });
+
+    lamaManager.subscribe((state) => {
+      if (mainWin && !mainWin.isDestroyed()) {
+        mainWin.webContents.send('lama-component-state-changed', state);
+      }
     });
   }
   return lamaManager;
