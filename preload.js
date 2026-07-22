@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('api', {
   deleteProjectMapping: (args) => ipcRenderer.invoke('delete-project-mapping', args),
   renameChapter: (args) => ipcRenderer.invoke('rename-chapter', args),
   saveApiKey: (args) => ipcRenderer.invoke('save-api-key', args),
+  deleteApiKey: () => ipcRenderer.invoke('delete-api-key'),
   saveAppSettings: (args) => ipcRenderer.invoke('save-app-settings', args),
   loadAppSettings: () => ipcRenderer.invoke('load-app-settings'),
   selectWatermark: (args) => ipcRenderer.invoke('select-watermark', args),

@@ -105,7 +105,7 @@ test('keeps plaintext when the migration write fails', () => {
   });
 });
 
-test('returns needsKey when encrypted data cannot be decrypted', () => {
+test('requires key re-entry when encrypted data cannot be decrypted', () => {
   const h = createHarness({
     apiKeyEncrypted: Buffer.from('damaged').toString('base64'),
     apiKeyFormatVersion: 1,
@@ -115,7 +115,7 @@ test('returns needsKey when encrypted data cannot be decrypted', () => {
   assert.deepEqual(h.store.getMetadata(), {
     hasKey: false,
     apiKeyMasked: '',
-    keyState: 'needsKey',
+    keyState: 'reentryRequired',
   });
 });
 

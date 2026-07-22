@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, nativeImage, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -18,6 +18,7 @@ const {
   restoreProjectBackup,
 } = require('./lib/project-backup');
 const { createProjectBackupIpcCoordinator } = require('./lib/project-backup-ipc');
+const { createSecureApiKeyStore } = require('./lib/secure-api-key-store');
 
 let mainWin = null;
 const inpaintSidecar = createInpaintSidecarManager({
@@ -35,6 +36,12 @@ const SHARED_CONFIG_DIR = path.join(
   'mirai-screenmind'
 );
 const SHARED_CONFIG_PATH = path.join(SHARED_CONFIG_DIR, 'config.json');
+const apiKeyStore = createSecureApiKeyStore({
+  configPath: SHARED_CONFIG_PATH,
+  safeStorage,
+  readJson: readJsonWithRecovery,
+  writeJson: writeJsonAtomic,
+});
 
 const PROJECTS_DIR = path.join(__dirname, 'projects');
 const watermarkStore = createWatermarkStore(PROJECTS_DIR);
@@ -43,10 +50,6 @@ const chapterQualityStore = createChapterQualityStore(PROJECTS_DIR);
 // Ensure projects directory exists
 if (!fs.existsSync(PROJECTS_DIR)) {
   fs.mkdirSync(PROJECTS_DIR, { recursive: true });
-}
-
-function loadSharedConfig() {
-  return readJsonWithRecovery(SHARED_CONFIG_PATH, {});
 }
 
 function createWindow() {
@@ -151,8 +154,6 @@ ipcMain.handle('remove-watermark', (_e, { project, chapter }) =>
   watermarkStore.remove(project, chapter));
 
 ipcMain.handle('get-config', () => {
-  const cfg = loadSharedConfig();
-  
   let lastFolderPath = '';
   try {
     const lastProjectFile = path.join(PROJECTS_DIR, 'last_project.json');
@@ -162,9 +163,7 @@ ipcMain.handle('get-config', () => {
   } catch (err) {}
 
   return {
-    apiKey: cfg.apiKey || '',
-    hasKey: !!cfg.apiKey,
-    apiKeyMasked: cfg.apiKey ? `${cfg.apiKey.slice(0, 6)}…` : '',
+    ...apiKeyStore.getMetadata(),
     lastFolderPath
   };
 });
@@ -233,10 +232,9 @@ ipcMain.handle('read-folder', (_e, folderPath) => {
 });
 
 async function requestGeminiTranslation({ data, mimeType, glossary }) {
-  const cfg = loadSharedConfig();
-  const apiKey = cfg.apiKey;
+  const apiKey = apiKeyStore.getKey();
   if (!apiKey) {
-    throw new Error('ยังไม่ได้ตั้งค่า API Key — กรุณาไปบันทึก API Key ในโปรแกรม ScreenTranslator ก่อนครับ');
+    throw new Error('ยังไม่ได้ตั้งค่า API Key — กรุณาเปิดการตั้งค่าและกรอก Gemini API Key');
   }
 
   const prompt = buildTranslationPrompt(glossary);
@@ -611,18 +609,17 @@ ipcMain.handle('rename-chapter', async (_e, { project, oldChapter, newChapter, f
 // Save API Key to shared config (same location as ScreenTranslator)
 ipcMain.handle('save-api-key', (_e, { apiKey }) => {
   try {
-    if (!fs.existsSync(SHARED_CONFIG_DIR)) {
-      fs.mkdirSync(SHARED_CONFIG_DIR, { recursive: true });
-    }
-    let cfg = {};
-    if (fs.existsSync(SHARED_CONFIG_PATH)) {
-      cfg = readJsonWithRecovery(SHARED_CONFIG_PATH, {});
-    }
-    cfg.apiKey = apiKey;
-    writeJsonAtomic(SHARED_CONFIG_PATH, cfg);
-    return { success: true };
+    return { success: true, ...apiKeyStore.saveKey(apiKey) };
   } catch (err) {
-    return { error: err.message };
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('delete-api-key', () => {
+  try {
+    return { success: true, ...apiKeyStore.deleteKey() };
+  } catch (err) {
+    return { success: false, error: err.message };
   }
 });
 

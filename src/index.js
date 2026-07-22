@@ -138,6 +138,7 @@ const settingsSaveStatus     = document.getElementById('settingsSaveStatus');
 const settingsApiKeyInput    = document.getElementById('settingsApiKeyInput');
 const showApiKeyBtn          = document.getElementById('showApiKeyBtn');
 const saveApiKeyBtn          = document.getElementById('saveApiKeyBtn');
+const deleteApiKeyBtn        = document.getElementById('deleteApiKeyBtn');
 const saveApiKeyStatus       = document.getElementById('saveApiKeyStatus');
 const settingsFontSizeRange  = document.getElementById('settingsFontSizeRange');
 const settingsFontSizeVal    = document.getElementById('settingsFontSizeVal');
@@ -155,6 +156,28 @@ const undoBtn                = document.getElementById('undoBtn');
 const redoBtn                = document.getElementById('redoBtn');
 const resetPageBtn           = document.getElementById('resetPageBtn');
 const stopTranslateAllBtn    = document.getElementById('stopTranslateAllBtn');
+
+async function refreshApiKeyStatus() {
+  const config = await window.api.getConfig();
+  const text = keyStatus.querySelector('.status-text');
+  keyStatus.className = 'key-status';
+
+  if (config.hasKey) {
+    keyStatus.classList.add('connected');
+    text.textContent = config.keyState === 'legacyUnsecured'
+      ? `Gemini เชื่อมต่อแล้ว (${config.apiKeyMasked}) — รอ Windows เข้ารหัส`
+      : `Gemini เชื่อมต่อแล้ว (${config.apiKeyMasked})`;
+    settingsApiKeyInput.placeholder = `${config.apiKeyMasked} (กรอกใหม่เพื่อเปลี่ยน)`;
+  } else {
+    keyStatus.classList.add('disconnected');
+    text.textContent = config.keyState === 'needsKey'
+      ? 'ยังไม่ได้ตั้งค่า API Key'
+      : 'ไม่สามารถอ่าน API Key ได้ กรุณากรอกใหม่';
+    settingsApiKeyInput.placeholder = 'AIza...';
+  }
+
+  return config;
+}
 
 // 1. Initialize API Config + App Settings
 async function initApp() {
@@ -187,21 +210,8 @@ async function initApp() {
     retryInpaintBtn.disabled = false;
   });
 
-  // Then load API config
-  const cfg = await window.api.getConfig();
-  keyStatus.className = 'key-status';
-  const dot = keyStatus.querySelector('.status-dot');
-  const txt = keyStatus.querySelector('.status-text');
-  
-  if (cfg.hasKey) {
-    keyStatus.classList.add('connected');
-    txt.textContent = `Gemini เชื่อมต่อแล้ว (${cfg.apiKeyMasked})`;
-    // Pre-fill API key field with masked placeholder
-    settingsApiKeyInput.placeholder = `${cfg.apiKeyMasked} (กรอกใหม่เพื่อเปลี่ยน)`;
-  } else {
-    keyStatus.classList.add('disconnected');
-    txt.textContent = 'ยังไม่ได้ตั้งค่า API Key';
-  }
+  // Then load renderer-safe API key metadata.
+  const cfg = await refreshApiKeyStatus();
 
   // Load Saved Projects List on startup
   updateSavedProjectsList();
@@ -443,17 +453,30 @@ saveApiKeyBtn.addEventListener('click', async () => {
     return;
   }
   saveApiKeyStatus.textContent = '💾 กำลังบันทึก...';
+  settingsApiKeyInput.value = '';
   const res = await window.api.saveApiKey({ apiKey: key });
   if (res && res.success) {
     saveApiKeyStatus.textContent = '✅ บันทึก Key แล้ว';
     saveApiKeyStatus.style.color = '#10b981';
-    // Update header status
-    keyStatus.className = 'key-status connected';
-    keyStatus.querySelector('.status-text').textContent = `Gemini เชื่อมต่อแล้ว (${key.slice(0, 6)}…)`;
-    settingsApiKeyInput.value = '';
-    settingsApiKeyInput.placeholder = `${key.slice(0, 6)}… (กรอกใหม่เพื่อเปลี่ยน)`;
+    await refreshApiKeyStatus();
   } else {
-    saveApiKeyStatus.textContent = '❌ บันทึกล้มเหลว';
+    saveApiKeyStatus.textContent = `❌ ${res?.error || 'บันทึกล้มเหลว'}`;
+    saveApiKeyStatus.style.color = '#ef4444';
+  }
+  setTimeout(() => saveApiKeyStatus.textContent = '', 3000);
+});
+
+deleteApiKeyBtn.addEventListener('click', async () => {
+  if (!window.confirm('ลบ Gemini API Key ที่บันทึกไว้หรือไม่?')) return;
+  settingsApiKeyInput.value = '';
+  saveApiKeyStatus.textContent = 'กำลังลบ API Key...';
+  const res = await window.api.deleteApiKey();
+  if (res && res.success) {
+    saveApiKeyStatus.textContent = '✅ ลบ API Key แล้ว';
+    saveApiKeyStatus.style.color = '#10b981';
+    await refreshApiKeyStatus();
+  } else {
+    saveApiKeyStatus.textContent = `❌ ${res?.error || 'ลบ API Key ไม่สำเร็จ'}`;
     saveApiKeyStatus.style.color = '#ef4444';
   }
   setTimeout(() => saveApiKeyStatus.textContent = '', 3000);
