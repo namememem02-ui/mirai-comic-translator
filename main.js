@@ -81,7 +81,7 @@ function getLamaManager() {
     const installer = createLamaComponentInstaller({
       fs,
       path,
-      fetchImpl: fetch,
+      fetch: globalThis.fetch,
     });
 
     const settingsFile = path.join(STORAGE_ROOT, 'lama_settings.json');
