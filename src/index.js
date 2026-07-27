@@ -2008,15 +2008,7 @@ function updateLiveOverflowWarning(bubble) {
   const boxWidth = ((xmax - xmin) / 1000) * activeImage.naturalWidth * 0.85;
   const boxHeight = ((ymax - ymin) / 1000) * activeImage.naturalHeight * 0.85;
   const fontSize = Number(bubble.font_size) || 6;
-  const fontStyle = [
-    bubble.italic ? 'italic' : '',
-    bubble.bold !== false ? 'bold' : '',
-    `${fontSize}px`,
-    `'${bubble.font_family || 'Sarabun'}'`,
-    `'Segoe UI'`,
-    `sans-serif`
-  ].filter(Boolean).join(' ');
-  liveOverflowContext.font = fontStyle;
+  liveOverflowContext.font = `bold ${fontSize}px '${bubble.font_family || 'Sarabun'}', 'Segoe UI', sans-serif`;
   const warning = window.TextOverflow.measureTextOverflow({
     text: bubble.translated_text, boxWidth, boxHeight, fontSize, lineHeight: fontSize * 1.25,
   }, window.TextOverflow.createCanvasAdapter(liveOverflowContext));
@@ -2662,50 +2654,6 @@ function renderPageTranslation() {
       alignRow.appendChild(btn);
     });
 
-    // Bold / Italic checkbox row
-    const decorationRow = document.createElement('div');
-    decorationRow.className = 'card-controls-row';
-    decorationRow.style.cssText = 'display:flex; align-items:center; gap:16px; margin-top:6px;';
-    
-    // Bold Checkbox
-    const boldLabel = document.createElement('label');
-    boldLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; color:#94a3b8; cursor:pointer;';
-    
-    const boldCheck = document.createElement('input');
-    boldCheck.type = 'checkbox';
-    boldCheck.checked = bubble.bold !== false;
-    boldCheck.style.cursor = 'pointer';
-    boldCheck.addEventListener('change', (e) => {
-      pushUndoState();
-      bubble.bold = e.target.checked;
-      updateLiveOverflowWarning(bubble);
-      saveCurrentPageTranslation();
-      refreshTypesetPreview();
-    });
-    boldLabel.appendChild(boldCheck);
-    boldLabel.appendChild(document.createTextNode('ตัวหนา (Bold)'));
-    
-    // Italic Checkbox
-    const italicLabel = document.createElement('label');
-    italicLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; color:#94a3b8; cursor:pointer;';
-    
-    const italicCheck = document.createElement('input');
-    italicCheck.type = 'checkbox';
-    italicCheck.checked = !!bubble.italic;
-    italicCheck.style.cursor = 'pointer';
-    italicCheck.addEventListener('change', (e) => {
-      pushUndoState();
-      bubble.italic = e.target.checked;
-      updateLiveOverflowWarning(bubble);
-      saveCurrentPageTranslation();
-      refreshTypesetPreview();
-    });
-    italicLabel.appendChild(italicCheck);
-    italicLabel.appendChild(document.createTextNode('ตัวเอียง (Italic)'));
-    
-    decorationRow.appendChild(boldLabel);
-    decorationRow.appendChild(italicLabel);
-
     // Wrap all styling rows in an always-visible styling panel
     const stylingPanel = document.createElement('div');
     stylingPanel.className = 'card-styling-panel';
@@ -2718,7 +2666,6 @@ function renderPageTranslation() {
     stylingPanel.appendChild(colorRow);
     stylingPanel.appendChild(rotateRow);
     stylingPanel.appendChild(fontFamilyRow);
-    stylingPanel.appendChild(decorationRow); // Add Bold/Italic row
     stylingPanel.appendChild(retouchRow);
     stylingPanel.appendChild(alignRow);
 
@@ -3297,7 +3244,7 @@ function renderTypesetTextLayer(renderToken = pageRenderGuard.current()) {
     
     const displayText = getInlineDisplayText(bubble);
     if (displayText) {
-      drawTypesetText(ctx, displayText, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate, bubble.font_family, bubble.text_align, bubble.outline_color, bubble.bold !== false, !!bubble.italic);
+      drawTypesetText(ctx, displayText, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate, bubble.font_family, bubble.text_align, bubble.outline_color);
     }
   });
 }
@@ -3341,7 +3288,7 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false, overrideRotate = 0, overrideFontFamily = null, overrideTextAlign = null, overrideOutlineColor = null, isBold = true, isItalic = false) {
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false, overrideRotate = 0, overrideFontFamily = null, overrideTextAlign = null, overrideOutlineColor = null) {
   console.log('[drawTypesetText] text:', text, 'rotate:', overrideRotate, 'hasRotation:', !!overrideRotate);
   let textColor = overrideTextColor || '#000000';
 
@@ -3354,27 +3301,16 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
   let fontSize;
   let lines = [];
   
-  const setFont = (size) => {
-    ctx.font = [
-      isItalic ? 'italic' : '',
-      isBold ? 'bold' : '',
-      `${size}px`,
-      `'${fontFamily}'`,
-      `'Segoe UI'`,
-      `sans-serif`
-    ].filter(Boolean).join(' ');
-  };
-  
   if (overrideFontSize) {
     fontSize = overrideFontSize;
-    setFont(fontSize);
+    ctx.font = `bold ${fontSize}px '${fontFamily}', 'Segoe UI', sans-serif`;
     lines = wrapThaiText(ctx, text, w * 0.85);
   } else {
     fontSize = Math.max(14, Math.round(h * 0.18));
     if (fontSize > 40) fontSize = 40;
     
     while (fontSize >= 6) {
-      setFont(fontSize);
+      ctx.font = `bold ${fontSize}px '${fontFamily}', 'Segoe UI', sans-serif`;
       lines = wrapThaiText(ctx, text, w * 0.85);
       const totalHeight = lines.length * (fontSize * 1.25);
       if (totalHeight <= h * 0.85) {
@@ -3891,8 +3827,7 @@ async function composeReviewPage(imgObj, translation) {
           context, bubble.translated_text, x, y, width, height,
           background === sourceImage ? sampleBubbleBackground(context, x, y, width, height) : '#ffffff',
           bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate,
-          bubble.font_family, bubble.text_align, bubble.outline_color,
-          bubble.bold !== false, !!bubble.italic
+          bubble.font_family, bubble.text_align, bubble.outline_color
         );
       }
     });
@@ -4268,15 +4203,7 @@ function measureBubbleOverflow(bubble, imageWidth, imageHeight, context) {
   const width = ((box[3] - box[1]) / 1000) * imageWidth * 0.85;
   const height = ((box[2] - box[0]) / 1000) * imageHeight * 0.85;
   const fontSize = Number(bubble.font_size) || 6;
-  const fontStyle = [
-    bubble.italic ? 'italic' : '',
-    bubble.bold !== false ? 'bold' : '',
-    `${fontSize}px`,
-    `'${bubble.font_family || 'Sarabun'}'`,
-    `'Segoe UI'`,
-    `sans-serif`
-  ].filter(Boolean).join(' ');
-  context.font = fontStyle;
+  context.font = `bold ${fontSize}px '${bubble.font_family || 'Sarabun'}', 'Segoe UI', sans-serif`;
   return window.TextOverflow.isTextOverflowing({
     text: bubble.translated_text, boxWidth: width, boxHeight: height,
     fontSize, lineHeight: fontSize * 1.25,
@@ -4721,8 +4648,7 @@ async function runExport(indicesToExport) {
           if (bubble.translated_text && !bubble.hidden) {
             drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast,
               bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate,
-              bubble.font_family, bubble.text_align, bubble.outline_color,
-              bubble.bold !== false, !!bubble.italic);
+              bubble.font_family, bubble.text_align, bubble.outline_color);
           }
         });
       }

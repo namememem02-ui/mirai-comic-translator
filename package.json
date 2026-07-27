@@ -1,6 +1,6 @@
 {
   "name": "comic-translator",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "private": true,
   "description": "Mee-a-rai Comic Translator — AI-assisted comic translation, editing, and export",
   "main": "main.js",
