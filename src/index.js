@@ -2896,22 +2896,61 @@ translateAllBtn.addEventListener('click', async () => {
       await selectPage(i);
       if (cancelTranslateAll) break;
       
-      const result = await window.api.translatePage({
-        imagePath: img.absolutePath,
-        glossary: projectGlossary
-      });
-      
-      await applyTranslationResult(result);
-      
-      // Invalidate cache for this page
-      delete cleanedBgCache[img.name];
-      
-      await window.api.savePageTranslation({
-        project: currentProject,
-        chapter: currentChapter,
-        pageName: img.name,
-        translationData: activePageTranslation
-      });
+      let pageSuccess = false;
+      let attempts = 0;
+      while (!pageSuccess && !cancelTranslateAll) {
+        try {
+          const result = await window.api.translatePage({
+            imagePath: img.absolutePath,
+            glossary: projectGlossary
+          });
+          
+          await applyTranslationResult(result);
+          
+          // Invalidate cache for this page
+          delete cleanedBgCache[img.name];
+          
+          await window.api.savePageTranslation({
+            project: currentProject,
+            chapter: currentChapter,
+            pageName: img.name,
+            translationData: activePageTranslation
+          });
+          
+          pageSuccess = true;
+        } catch (err) {
+          if (cancelTranslateAll) break;
+          
+          const errMsg = err.message || '';
+          const isRateLimit = errMsg.includes('Rate Limit') || errMsg.includes('โควตา') || errMsg.includes('429');
+          
+          if (isRateLimit) {
+            // Parse seconds from error message, e.g. "กรุณาพักรอประมาณ 51 วินาที"
+            const matchSec = errMsg.match(/(?:พักรอประมาณ|รออีก|wait|retry)\s*(\d+)/i);
+            let waitSec = matchSec ? parseInt(matchSec[1]) : 60;
+            if (waitSec <= 0 || isNaN(waitSec)) waitSec = 60;
+            
+            // Countdown loop
+            for (let s = waitSec; s > 0; s--) {
+              if (cancelTranslateAll) break;
+              translateAllBtn.textContent = `⌛ โควตาเต็ม รออีก ${s} วินาที...`;
+              await new Promise(r => setTimeout(r, 1000));
+            }
+            
+            if (cancelTranslateAll) break;
+            
+            attempts++;
+            if (attempts > 5) {
+              throw new Error(`พยายามเข้าถึง API ใหม่ 5 ครั้งแต่ยังติดโควตา: ${errMsg}`);
+            }
+            // Update button label for retry attempt
+            translateAllBtn.textContent = `⏳ แปลหน้า ${i+1}/${images.length} (${img.name}) [ลองใหม่ครั้งที่ ${attempts}]...`;
+            continue;
+          } else {
+            throw err;
+          }
+        }
+      }
       
       renderPageTranslation();
       renderThumbnails();
