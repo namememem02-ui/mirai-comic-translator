@@ -37,6 +37,7 @@
     const textAlign = ['left', 'center', 'right'].includes(bubble.text_align) ? bubble.text_align : 'center';
     const colorValue = typeof bubble.text_color === 'string' ? bubble.text_color.trim() : '';
     const color = /^(#[0-9a-f]{3,8}|rgba?\([^)]*\)|hsla?\([^)]*\))$/i.test(colorValue) ? colorValue : '#111827';
+    const transform = bubble.rotate ? `rotate(${bubble.rotate}deg)` : 'none';
     return {
       left: percent(box.left),
       top: percent(box.top),
@@ -45,6 +46,7 @@
       fontFamily,
       textAlign,
       color,
+      transform,
     };
   }
 

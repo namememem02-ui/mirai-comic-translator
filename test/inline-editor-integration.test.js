@@ -7,7 +7,7 @@ const renderer = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.js'), 
 
 test('double click opens only a preview bubble through normalized hit testing', () => {
   assert.match(renderer, /viewportContainer\.addEventListener\(['"]dblclick['"]/);
-  assert.match(renderer, /if \(!isPreviewMode\) return/);
+  assert.match(renderer, /if \(!isPreviewMode && !showTranslationOverlay\) return/);
   assert.match(renderer, /window\.InlineEditor\.findBubbleAtPoint/);
   assert.match(renderer, /openInlineEditor\(bubble\)/);
 });

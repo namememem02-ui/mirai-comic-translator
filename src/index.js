@@ -27,6 +27,7 @@ const activePageTitle = document.getElementById('activePageTitle');
 const translatePageBtn = document.getElementById('translatePageBtn');
 const translateAllBtn = document.getElementById('translateAllBtn');
 const previewToggleBtn = document.getElementById('previewToggleBtn');
+const showOverlayBtn = document.getElementById('showOverlayBtn');
 const exportChapterBtn = document.getElementById('exportChapterBtn');
 const chapterReviewBtn = document.getElementById('chapterReviewBtn');
 const chapterFindReplaceBtn = document.getElementById('chapterFindReplaceBtn');
@@ -91,6 +92,7 @@ const cancelRestoreProjectBtn = document.getElementById('cancelRestoreProjectBtn
 // App State
 let currentProject = '';
 let currentChapter = '';
+let currentFolderPath = '';
 let images = [];
 let activeIndex = -1;
 let activePageTranslation = [];
@@ -194,6 +196,8 @@ async function initApp() {
     Object.assign(appSettings, savedSettings);
   }
   appSettings.uiScale = window.UiScale.applyUiScale(document.documentElement, appSettings.uiScale);
+  showTranslationOverlay = !!appSettings.showTranslationOverlay;
+  updateShowOverlayBtnUI();
 
   // Apply settings to the Settings Dialog UI
   applySettingsToDialog();
@@ -690,7 +694,7 @@ function undo() {
   activePageTranslation = undoStack.pop();
   saveCurrentPageTranslation();
   renderPageTranslation();
-  if (isPreviewMode) refreshTypesetView();
+  if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
   updateUndoRedoBtns();
 }
 
@@ -700,7 +704,7 @@ function redo() {
   activePageTranslation = redoStack.pop();
   saveCurrentPageTranslation();
   renderPageTranslation();
-  if (isPreviewMode) refreshTypesetView();
+  if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
   updateUndoRedoBtns();
 }
 
@@ -740,12 +744,12 @@ function cancelInlineEditor() {
   if (!inlineEditorSession) return;
   inlineEditorSession = null;
   hideInlineEditorSurface();
-  if (isPreviewMode) refreshTypesetView();
+  if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
 }
 
 function openInlineEditor(bubble) {
   const activePage = images[activeIndex];
-  if (!isPreviewMode || !activePage || !bubble || bubble.hidden) return;
+  if ((!isPreviewMode && !showTranslationOverlay) || !activePage || !bubble || bubble.hidden) return;
   if (inlineEditorSession) cancelInlineEditor();
 
   const text = bubble.translated_text || '';
@@ -804,7 +808,7 @@ async function confirmInlineEditor() {
     redoStack.length = 0;
     updateUndoRedoBtns();
     renderPageTranslation();
-    if (isPreviewMode) refreshTypesetView();
+    if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
     inlineEditorSession = session;
     inlineTranslationEditor.classList.add('is-error');
     inlineEditorStatus.textContent = 'บันทึกไม่สำเร็จ ข้อความเดิมยังไม่ถูกเปลี่ยน กรุณาลองอีกครั้ง';
@@ -816,7 +820,7 @@ async function confirmInlineEditor() {
   inlineEditorSession = null;
   hideInlineEditorSurface();
   renderPageTranslation();
-  if (isPreviewMode) refreshTypesetView();
+  if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
 }
 
 inlineTranslationEditor.addEventListener('input', () => {
@@ -855,7 +859,7 @@ inlineTranslationEditor.addEventListener('keydown', (event) => {
 });
 
 viewportContainer.addEventListener('dblclick', (event) => {
-  if (!isPreviewMode) return;
+  if (!isPreviewMode && !showTranslationOverlay) return;
   if (event.target === inlineTranslationEditor) return;
   const bounds = viewportContainer.getBoundingClientRect();
   if (bounds.width <= 0 || bounds.height <= 0) return;
@@ -966,7 +970,7 @@ confirmCopyPreviousBtn.addEventListener('click', async () => {
       redoStack.length = 0;
       updateUndoRedoBtns();
       renderPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
       copyPreviousWarning.textContent = 'บันทึกไม่สำเร็จ ข้อมูลเดิมถูกคืนกลับแล้ว กรุณาลองอีกครั้ง';
       confirmCopyPreviousBtn.disabled = false;
     }
@@ -975,7 +979,7 @@ confirmCopyPreviousBtn.addEventListener('click', async () => {
 
   if (activeIndex === copyTargetIndex && images[activeIndex]?.name === copyTargetPage.name) {
     renderPageTranslation();
-    if (isPreviewMode) refreshTypesetView();
+    if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
     copyPreviousPageDialog.close();
   }
 });
@@ -1537,8 +1541,12 @@ async function loadFolder(folderPath, isAutoLoad = false) {
 
   currentProject = res.project;
   currentChapter = res.chapter;
+  currentFolderPath = folderPath;
   images = res.images;
   backupProjectBtn.disabled = false;
+  
+  const addPageButtonsContainer = document.getElementById('addPageButtonsContainer');
+  if (addPageButtonsContainer) addPageButtonsContainer.style.display = 'flex';
   lastChapterReplaceUndo = null;
   findReplaceUndo.disabled = true;
   invalidateChapterFindReplacePreview();
@@ -1551,6 +1559,7 @@ async function loadFolder(folderPath, isAutoLoad = false) {
   projChapter.textContent = currentChapter;
   projectInfo.style.display = 'block';
   previewToggleBtn.disabled = false;
+  showOverlayBtn.disabled = false;
   exportChapterBtn.disabled = false;
   chapterReviewBtn.disabled = false;
   chapterFindReplaceBtn.disabled = false;
@@ -1611,6 +1620,56 @@ function renderThumbnails() {
     details.appendChild(status);
     item.appendChild(preview);
     item.appendChild(details);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'thumb-delete-btn';
+    deleteBtn.innerHTML = '🗑️';
+    deleteBtn.title = 'ลบหน้านี้';
+    deleteBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const confirmDelete = confirm(`คุณต้องการลบหน้า "${img.name}" ใช่หรือไม่?\n(การกระทำนี้จะลบไฟล์รูปภาพและไฟล์คำแปลออกจากเครื่องอย่างถาวร)`);
+      if (confirmDelete) {
+        const res = await window.api.deletePage({
+          folderPath: currentFolderPath,
+          project: currentProject,
+          chapter: currentChapter,
+          pageName: img.name
+        });
+        if (res && res.success) {
+          let newActiveIndex = activeIndex;
+          if (activeIndex === idx) {
+            if (images.length <= 1) {
+              newActiveIndex = -1;
+            } else if (idx === images.length - 1) {
+              newActiveIndex = idx - 1;
+            }
+          } else if (activeIndex > idx) {
+            newActiveIndex = activeIndex - 1;
+          }
+          
+          await loadFolder(currentFolderPath);
+          
+          if (newActiveIndex >= 0 && images.length > 0) {
+            selectPage(newActiveIndex);
+          } else {
+            activePageTranslation = [];
+            activeIndex = -1;
+            activePageTitle.textContent = 'ไม่มีหน้ากระดาษ';
+            bubbleOverlay.innerHTML = '';
+            const canvas = document.getElementById('typesetTextCanvas');
+            if (canvas) {
+              const ctx = canvas.getContext('2d');
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+            }
+            activeImage.src = '';
+            renderPlaceholder();
+          }
+        } else {
+          alert(`ลบไม่สำเร็จ: ${res.error || 'เกิดข้อผิดพลาด'}`);
+        }
+      }
+    });
+    item.appendChild(deleteBtn);
 
     item.addEventListener('click', () => selectPage(idx));
     thumbnailsList.appendChild(item);
@@ -1893,6 +1952,7 @@ async function selectPage(idx) {
 
   // Render Image
   activeImage.src = activePage.fileUrl;
+
   placeholderView.style.display = 'none';
   viewportContainer.style.display = 'block';
   // Each page starts in fit-width mode; onload calculates its exact width.
@@ -1908,6 +1968,7 @@ async function selectPage(idx) {
   translatePageBtn.disabled = false;
   translateAllBtn.disabled = false;
   previewToggleBtn.disabled = false;
+  showOverlayBtn.disabled = false;
   exportChapterBtn.disabled = false;
   chapterReviewBtn.disabled = false;
   chapterFindReplaceBtn.disabled = false;
@@ -1988,7 +2049,8 @@ function renderPageTranslation() {
       if (bubble.rotate) {
         const cx = xmin + (xmax - xmin) / 2;
         const cy = (ymin + ymax) / 2;
-        g.setAttribute('transform', `rotate(${bubble.rotate}, ${cx}, ${cy})`);
+        const f = (activeImage.naturalHeight && activeImage.naturalWidth) ? (activeImage.naturalHeight / activeImage.naturalWidth) : 1;
+        g.setAttribute('transform', `translate(${cx}, ${cy}) scale(1, ${1 / f}) rotate(${bubble.rotate}) scale(1, ${f}) translate(${-cx}, ${-cy})`);
       }
       
       const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
@@ -2043,6 +2105,85 @@ function renderPageTranslation() {
     card.className = 'bubble-editor-card';
     card.setAttribute('data-id', bubble.bubble_id);
 
+    const origText = document.createElement('div');
+    origText.className = 'original-text-block';
+    origText.textContent = bubble.original_text || '(ไม่มีอักษรตรวจพบ)';
+
+    const transInput = document.createElement('textarea');
+    transInput.className = 'translation-textarea';
+    transInput.value = bubble.translated_text || '';
+    
+    // Auto-save on edit and update canvas preview in real-time
+    transInput.addEventListener('input', (e) => {
+      bubble.translated_text = e.target.value;
+      updateLiveOverflowWarning(bubble);
+      saveCurrentPageTranslation();
+      refreshTypesetPreview();
+    });
+
+    transInput.addEventListener('focus', () => {
+      pushUndoState(); // capture state before editing
+      highlightOverlayRect(bubble.bubble_id);
+      card.classList.add('active');
+    });
+
+    transInput.addEventListener('blur', () => {
+      unhighlightOverlayRect(bubble.bubble_id);
+      card.classList.remove('active');
+    });
+
+    const translateCropBtn = document.createElement('button');
+    translateCropBtn.className = 'translate-crop-btn';
+    translateCropBtn.textContent = '🤖 แปลกล่องนี้';
+    translateCropBtn.title = 'ใช้ Gemini สแกนตัวอักษรและแปลภาษาไทยเฉพาะในกรอบนี้';
+    translateCropBtn.style.cssText = 'padding: 2px 6px; font-size: 10px; margin-left: 8px; cursor: pointer; background: #1e293b; border: 1px solid #475569; color: #f8fafc; border-radius: 4px; font-family: inherit; font-weight: 600; display: inline-flex; align-items: center; gap: 3px; transition: background 0.1s;';
+    
+    translateCropBtn.addEventListener('mouseenter', () => {
+      translateCropBtn.style.background = '#3b82f6';
+      translateCropBtn.style.borderColor = '#3b82f6';
+    });
+    translateCropBtn.addEventListener('mouseleave', () => {
+      translateCropBtn.style.background = '#1e293b';
+      translateCropBtn.style.borderColor = '#475569';
+    });
+
+    translateCropBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      translateCropBtn.disabled = true;
+      translateCropBtn.textContent = '⏳ แปล...';
+      translateCropBtn.style.opacity = '0.5';
+
+      try {
+        const activePage = images[activeIndex];
+        if (!activePage) throw new Error('ไม่พบหน้าการ์ตูนที่ใช้งานอยู่');
+
+        const result = await window.api.translateCrop({
+          imagePath: activePage.absolutePath,
+          box_2d: bubble.box_2d,
+          glossary: projectGlossary
+        });
+
+        if (result.error) throw new Error(result.error);
+
+        bubble.original_text = result.original_text;
+        bubble.translated_text = result.translated_text;
+
+        origText.textContent = result.original_text || '(ไม่มีอักษรตรวจพบ)';
+        transInput.value = result.translated_text || '';
+
+        updateLiveOverflowWarning(bubble);
+        await saveCurrentPageTranslation();
+        refreshTypesetPreview();
+      } catch (err) {
+        console.error(err);
+        alert(`แปลกรอบไม่สำเร็จ: ${err.message}`);
+      } finally {
+        translateCropBtn.disabled = false;
+        translateCropBtn.textContent = '🤖 แปลกล่องนี้';
+        translateCropBtn.style.opacity = '1.0';
+      }
+    });
+
     const header = document.createElement('div');
     header.className = 'card-header';
     header.style.display = 'flex';
@@ -2052,6 +2193,7 @@ function renderPageTranslation() {
     idLabel.className = 'bubble-id-label';
     idLabel.textContent = `บอลลูน #${bubble.bubble_id}`;
     header.appendChild(idLabel);
+    header.appendChild(translateCropBtn);
 
     const overflowBadge = document.createElement('button');
     overflowBadge.className = 'live-overflow-badge';
@@ -2083,7 +2225,7 @@ function renderPageTranslation() {
       bubble.hidden = !bubble.hidden;
       saveCurrentPageTranslation();
       renderPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
     });
     
     // Delete balloon button
@@ -2112,40 +2254,11 @@ function renderPageTranslation() {
       
       await saveCurrentPageTranslation();
       renderPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
     });
     
     header.appendChild(hideBtn);
     header.appendChild(deleteBtn);
-
-    const origText = document.createElement('div');
-    origText.className = 'original-text-block';
-    origText.textContent = bubble.original_text || '(ไม่มีอักษรตรวจพบ)';
-
-    const transInput = document.createElement('textarea');
-    transInput.className = 'translation-textarea';
-    transInput.value = bubble.translated_text || '';
-    
-    // Auto-save on edit and update canvas preview in real-time
-    transInput.addEventListener('input', (e) => {
-      bubble.translated_text = e.target.value;
-      updateLiveOverflowWarning(bubble);
-      saveCurrentPageTranslation();
-      if (isPreviewMode) {
-        refreshTypesetView();
-      }
-    });
-
-    transInput.addEventListener('focus', () => {
-      pushUndoState(); // capture state before editing
-      highlightOverlayRect(bubble.bubble_id);
-      card.classList.add('active');
-    });
-
-    transInput.addEventListener('blur', () => {
-      unhighlightOverlayRect(bubble.bubble_id);
-      card.classList.remove('active');
-    });
 
 
     // 1. Font Size Override controls row (Range Slider)
@@ -2208,7 +2321,7 @@ function renderPageTranslation() {
       }
       updateLiveOverflowWarning(bubble);
       saveCurrentPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      refreshTypesetPreview();
     });
     
     sizeSlider.addEventListener('input', (e) => {
@@ -2217,7 +2330,7 @@ function renderPageTranslation() {
       sizeValLabel.textContent = `${val}px`;
       updateLiveOverflowWarning(bubble);
       saveCurrentPageTranslation();
-      if (isPreviewMode) renderTypesetImage();
+      refreshTypesetPreview();
     });
     
     autoSizeLabel.appendChild(autoSizeCheck);
@@ -2291,7 +2404,7 @@ function renderPageTranslation() {
           colorInput.style.opacity = '1.0';
           colorInput.value = color;
           saveCurrentPageTranslation();
-          if (isPreviewMode) refreshTypesetView();
+          refreshTypesetPreview();
           renderRecentSwatches();
         });
         recentColorsContainer.appendChild(swatch);
@@ -2307,7 +2420,7 @@ function renderPageTranslation() {
         colorInput.style.opacity = '1.0';
       }
       saveCurrentPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      refreshTypesetPreview();
     });
     
     colorInput.addEventListener('input', (e) => {
@@ -2324,7 +2437,7 @@ function renderPageTranslation() {
       }
       
       saveCurrentPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      refreshTypesetPreview();
       renderRecentSwatches();
     });
     
@@ -2343,14 +2456,33 @@ function renderPageTranslation() {
     outlineCheck.checked = !!bubble.outline;
     outlineCheck.style.cursor = 'pointer';
     
+    const outlineColorInput = document.createElement('input');
+    outlineColorInput.type = 'color';
+    outlineColorInput.value = bubble.outline_color || '#ffffff';
+    outlineColorInput.style.cssText = 'cursor:pointer; width:22px; height:18px; padding:0; border:1px solid #475569; background:none; border-radius:3px; margin-left:4px; transition: opacity 0.1s;';
+    outlineColorInput.style.opacity = bubble.outline ? '1.0' : '0.3';
+    outlineColorInput.disabled = !bubble.outline;
+    outlineColorInput.title = 'เลือกสีขอบอักษร';
+    
+    outlineColorInput.addEventListener('click', (e) => e.stopPropagation());
+    
     outlineCheck.addEventListener('change', (e) => {
       bubble.outline = e.target.checked;
+      outlineColorInput.disabled = !bubble.outline;
+      outlineColorInput.style.opacity = bubble.outline ? '1.0' : '0.3';
       saveCurrentPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      refreshTypesetPreview();
+    });
+    
+    outlineColorInput.addEventListener('input', (e) => {
+      bubble.outline_color = e.target.value;
+      saveCurrentPageTranslation();
+      refreshTypesetPreview();
     });
     
     outlineLabel.appendChild(outlineCheck);
     outlineLabel.appendChild(document.createTextNode('ขอบอักษร'));
+    outlineLabel.appendChild(outlineColorInput);
 
     autoColorLabel.appendChild(autoColorCheck);
     autoColorLabel.appendChild(document.createTextNode('ออโต้'));
@@ -2403,14 +2535,15 @@ function renderPageTranslation() {
         const cx = xmin + (xmax - xmin) / 2;
         const cy_avg = (ymin + ymax) / 2;
         if (val !== 0) {
-          group.setAttribute('transform', `rotate(${val}, ${cx}, ${cy_avg})`);
+          const f = (activeImage.naturalHeight && activeImage.naturalWidth) ? (activeImage.naturalHeight / activeImage.naturalWidth) : 1;
+          group.setAttribute('transform', `translate(${cx}, ${cy_avg}) scale(1, ${1 / f}) rotate(${val}) scale(1, ${f}) translate(${-cx}, ${-cy_avg})`);
         } else {
           group.removeAttribute('transform');
         }
       }
       
       saveCurrentPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      refreshTypesetPreview();
     });
     
     rotateRow.appendChild(rotateLabel);
@@ -2447,10 +2580,40 @@ function renderPageTranslation() {
       bubble.font_family = e.target.value;
       updateLiveOverflowWarning(bubble);
       saveCurrentPageTranslation();
-      if (isPreviewMode) refreshTypesetView();
+      refreshTypesetPreview();
     });
     fontFamilyRow.appendChild(fontFamilyLabel);
     fontFamilyRow.appendChild(fontFamilySelect);
+
+    // 4.5 Retouch Background Checkbox Row
+    const retouchRow = document.createElement('div');
+    retouchRow.className = 'card-controls-row';
+    retouchRow.style.cssText = 'display:flex; align-items:center; gap:6px; margin-top:6px;';
+    
+    const retouchLabel = document.createElement('label');
+    retouchLabel.style.cssText = 'display:flex; align-items:center; gap:4px; font-size:12px; color:#94a3b8; cursor:pointer;';
+    
+    const retouchCheck = document.createElement('input');
+    retouchCheck.type = 'checkbox';
+    retouchCheck.checked = !bubble.manualAdd;
+    retouchCheck.style.cursor = 'pointer';
+    
+    retouchCheck.addEventListener('change', (e) => {
+      pushUndoState();
+      bubble.manualAdd = !e.target.checked;
+      
+      const activePage = images[activeIndex];
+      if (activePage) {
+        delete cleanedBgCache[activePage.name];
+      }
+      
+      saveCurrentPageTranslation();
+      refreshTypesetPreview();
+    });
+    
+    retouchLabel.appendChild(retouchCheck);
+    retouchLabel.appendChild(document.createTextNode('รีทัชลบตัวหนังสือเดิมในกล่องนี้ (AI Inpaint)'));
+    retouchRow.appendChild(retouchLabel);
 
     // 5. Text Alignment buttons row
     const alignRow = document.createElement('div');
@@ -2485,20 +2648,54 @@ function renderPageTranslation() {
           b.style.color = active ? '#fff' : '#94a3b8';
         });
         saveCurrentPageTranslation();
-        if (isPreviewMode) refreshTypesetView();
+        refreshTypesetPreview();
       });
       alignBtns.push(btn);
       alignRow.appendChild(btn);
     });
 
+    // Wrap all styling rows in a collapsible panel
+    const stylingPanel = document.createElement('div');
+    stylingPanel.className = 'card-styling-panel';
+    stylingPanel.style.display = 'none'; // Collapsed by default
+    stylingPanel.style.marginTop = '6px';
+    stylingPanel.style.paddingTop = '6px';
+    stylingPanel.style.borderTop = '1px solid #334155';
+
+    stylingPanel.appendChild(fontRow);
+    stylingPanel.appendChild(colorRow);
+    stylingPanel.appendChild(rotateRow);
+    stylingPanel.appendChild(fontFamilyRow);
+    stylingPanel.appendChild(retouchRow);
+    stylingPanel.appendChild(alignRow);
+
+    const toggleStyleBtn = document.createElement('button');
+    toggleStyleBtn.className = 'toggle-style-btn';
+    toggleStyleBtn.textContent = '⚙️ ปรับแต่งรูปแบบ ▼';
+    toggleStyleBtn.style.cssText = 'width:100%; margin-top:8px; padding:4px; font-size:11px; background:#1e293b; border:1px dashed #334155; color:#94a3b8; border-radius:4px; cursor:pointer; text-align:center; font-family:inherit; font-weight:600; transition: all 0.1s;';
+    
+    toggleStyleBtn.addEventListener('mouseenter', () => {
+      toggleStyleBtn.style.color = '#38bdf8';
+      toggleStyleBtn.style.borderColor = '#38bdf8';
+    });
+    toggleStyleBtn.addEventListener('mouseleave', () => {
+      toggleStyleBtn.style.color = '#94a3b8';
+      toggleStyleBtn.style.borderColor = '#334155';
+    });
+
+    toggleStyleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isCollapsed = stylingPanel.style.display === 'none';
+      stylingPanel.style.display = isCollapsed ? 'block' : 'none';
+      toggleStyleBtn.textContent = isCollapsed ? '⚙️ ปรับแต่งรูปแบบ ▲' : '⚙️ ปรับแต่งรูปแบบ ▼';
+      toggleStyleBtn.style.borderStyle = isCollapsed ? 'solid' : 'dashed';
+    });
+
     card.appendChild(header);
     card.appendChild(origText);
     card.appendChild(transInput);
-    card.appendChild(fontRow);
-    card.appendChild(colorRow);
-    card.appendChild(rotateRow);
-    card.appendChild(fontFamilyRow);
-    card.appendChild(alignRow);
+    card.appendChild(toggleStyleBtn);
+    card.appendChild(stylingPanel);
 
     bubblesList.appendChild(card);
   });
@@ -2536,7 +2733,8 @@ function updateSVGOverlayOnly() {
         if (bubble.rotate) {
           const cx = xmin + (xmax - xmin) / 2;
           const cy = (ymin + ymax) / 2;
-          group.setAttribute('transform', `rotate(${bubble.rotate}, ${cx}, ${cy})`);
+          const f = (activeImage.naturalHeight && activeImage.naturalWidth) ? (activeImage.naturalHeight / activeImage.naturalWidth) : 1;
+          group.setAttribute('transform', `translate(${cx}, ${cy}) scale(1, ${1 / f}) rotate(${bubble.rotate}) scale(1, ${f}) translate(${-cx}, ${-cy})`);
         } else {
           group.removeAttribute('transform');
         }
@@ -2654,7 +2852,7 @@ translatePageBtn.addEventListener('click', async () => {
     
     // Render results on both sidebar and center canvas
     renderPageTranslation();
-    if (isPreviewMode) refreshTypesetView();
+    if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
     updateProjectStats();
   } catch (err) {
     alert(`การแปลล้มเหลว: ${err.message}`);
@@ -2789,8 +2987,8 @@ function createGlossaryRow(eng = '', thai = '') {
     window.api.saveMemory({ project: currentProject, memoryData: projectGlossary });
   };
 
-  engInput.addEventListener('change', saveGlossary);
-  thaiInput.addEventListener('change', saveGlossary);
+  engInput.addEventListener('input', saveGlossary);
+  thaiInput.addEventListener('input', saveGlossary);
   deleteBtn.addEventListener('click', () => {
     row.remove();
     saveGlossary();
@@ -2807,6 +3005,43 @@ addGlossaryBtn.addEventListener('click', () => {
 });
 
 // 11. Typeset Preview and Export Management
+let showTranslationOverlay = false;
+
+function updateShowOverlayBtnUI() {
+  if (showTranslationOverlay) {
+    showOverlayBtn.classList.remove('btn-secondary');
+    showOverlayBtn.classList.add('btn-accent');
+    showOverlayBtn.style.background = '#3b82f6';
+    showOverlayBtn.style.color = '#ffffff';
+    showOverlayBtn.style.borderColor = '#3b82f6';
+  } else {
+    showOverlayBtn.classList.remove('btn-accent');
+    showOverlayBtn.classList.add('btn-secondary');
+    showOverlayBtn.style.background = '#1e293b';
+    showOverlayBtn.style.color = '#94a3b8';
+    showOverlayBtn.style.borderColor = '#334155';
+  }
+}
+
+showOverlayBtn.addEventListener('click', async () => {
+  showTranslationOverlay = !showTranslationOverlay;
+  appSettings.showTranslationOverlay = showTranslationOverlay;
+  await window.api.saveAppSettings(appSettings);
+  updateShowOverlayBtnUI();
+
+  if (activeIndex !== -1) {
+    const canvas = document.getElementById('typesetTextCanvas');
+    if (canvas) {
+      if (showTranslationOverlay) {
+        renderTypesetTextLayer();
+      } else {
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }
+});
+
 let isPreviewMode = false;
 previewToggleBtn.addEventListener('click', () => {
   isPreviewMode = !isPreviewMode;
@@ -2835,7 +3070,21 @@ activeImage.addEventListener('load', () => {
     renderWatermarkPreview();
     return;
   }
+  
+  // For raw/original image:
+  initBgSampler();
   renderWatermarkPreview();
+  if (showTranslationOverlay) {
+    renderTypesetTextLayer(renderToken);
+  } else {
+    // Clear canvas if overlay is turned off
+    const canvas = document.getElementById('typesetTextCanvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+
   if (isPreviewMode && activePageTranslation.length > 0) {
     renderTypesetImage(renderToken);
   }
@@ -2943,6 +3192,14 @@ async function renderTypesetImage(renderToken = pageRenderGuard.current()) {
   }
 }
 
+function refreshTypesetPreview() {
+  if (isPreviewMode) {
+    refreshTypesetView();
+  } else {
+    renderTypesetTextLayer();
+  }
+}
+
 function renderTypesetTextLayer(renderToken = pageRenderGuard.current()) {
   if (!pageRenderGuard.isCurrent(renderToken)) return;
   const canvas = document.getElementById('typesetTextCanvas');
@@ -2971,13 +3228,13 @@ function renderTypesetTextLayer(renderToken = pageRenderGuard.current()) {
     
     const displayText = getInlineDisplayText(bubble);
     if (displayText) {
-      drawTypesetText(ctx, displayText, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate, bubble.font_family, bubble.text_align);
+      drawTypesetText(ctx, displayText, x1, y1, w, h, bgColor, bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate, bubble.font_family, bubble.text_align, bubble.outline_color);
     }
   });
 }
 
 function refreshTypesetView() {
-  if (activeImage.src.startsWith('data:')) {
+  if (showTranslationOverlay || activeImage.src.startsWith('data:')) {
     renderTypesetTextLayer();
   } else {
     renderTypesetImage();
@@ -3015,16 +3272,9 @@ function sampleBubbleBackground(ctx, x, y, w, h) {
   }
 }
 
-function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false, overrideRotate = 0, overrideFontFamily = null, overrideTextAlign = null) {
-  // Check contrast of background to choose black or white text
+function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFontSize = null, overrideTextColor = null, overrideOutline = false, overrideRotate = 0, overrideFontFamily = null, overrideTextAlign = null, overrideOutlineColor = null) {
+  console.log('[drawTypesetText] text:', text, 'rotate:', overrideRotate, 'hasRotation:', !!overrideRotate);
   let textColor = overrideTextColor || '#000000';
-  if (!overrideTextColor && bgColor.startsWith('#')) {
-    const r = parseInt(bgColor.slice(1, 3), 16) || 0;
-    const g = parseInt(bgColor.slice(3, 5), 16) || 0;
-    const b = parseInt(bgColor.slice(5, 7), 16) || 0;
-    const luminance = r * 0.299 + g * 0.587 + b * 0.114;
-    if (luminance < 130) textColor = '#ffffff';
-  }
 
   const fontFamily = overrideFontFamily || 'Sarabun';
   const textAlign = overrideTextAlign || 'center';
@@ -3057,17 +3307,18 @@ function drawTypesetText(ctx, text, x, y, w, h, bgColor = '#ffffff', overrideFon
   const lineHeight = fontSize * 1.25;
   const startY = y + (h / 2) - ((lines.length - 1) * lineHeight / 2);
   
-  // Calculate high-contrast outline color if outline is checked
-  let outlineColor = '#ffffff';
+  // Calculate high-contrast outline color against the sampled background color if outline is checked
+  let outlineColor = '#ffffff'; // Default is white
   if (overrideOutline) {
-    if (textColor.startsWith('#')) {
-      const r = parseInt(textColor.slice(1, 3), 16) || 0;
-      const g = parseInt(textColor.slice(3, 5), 16) || 0;
-      const b = parseInt(textColor.slice(5, 7), 16) || 0;
-      const luminance = r * 0.299 + g * 0.587 + b * 0.114;
-      if (luminance > 150) outlineColor = '#000000';
+    if (overrideOutlineColor) {
+      outlineColor = overrideOutlineColor;
     } else {
-      if (textColor === 'white' || textColor === '#ffffff') outlineColor = '#000000';
+      // Default outline color logic:
+      // White is default, but if text color is white, use black.
+      const cleanText = (textColor || '#000000').trim().toLowerCase();
+      if (cleanText === 'white' || cleanText === '#ffffff') {
+        outlineColor = '#000000';
+      }
     }
   }
   
@@ -3213,14 +3464,31 @@ async function runAIInpaint(imgUrl, bubbles, canvasWidth, canvasHeight) {
     
     mctx.fillStyle = '#ffffff';
     mctx.beginPath();
-    mctx.roundRect(
-      maskRect.x,
-      maskRect.y,
-      maskRect.width,
-      maskRect.height,
-      Math.min(maskRect.width, maskRect.height) * 0.15
-    );
-    mctx.fill();
+    if (bubble.rotate) {
+      mctx.save();
+      const cx = maskRect.x + maskRect.width / 2;
+      const cy = maskRect.y + maskRect.height / 2;
+      mctx.translate(cx, cy);
+      mctx.rotate((bubble.rotate * Math.PI) / 180);
+      mctx.roundRect(
+        -maskRect.width / 2,
+        -maskRect.height / 2,
+        maskRect.width,
+        maskRect.height,
+        Math.min(maskRect.width, maskRect.height) * 0.15
+      );
+      mctx.fill();
+      mctx.restore();
+    } else {
+      mctx.roundRect(
+        maskRect.x,
+        maskRect.y,
+        maskRect.width,
+        maskRect.height,
+        Math.min(maskRect.width, maskRect.height) * 0.15
+      );
+      mctx.fill();
+    }
   });
 
   
@@ -3543,7 +3811,7 @@ async function composeReviewPage(imgObj, translation) {
           context, bubble.translated_text, x, y, width, height,
           background === sourceImage ? sampleBubbleBackground(context, x, y, width, height) : '#ffffff',
           bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate,
-          bubble.font_family, bubble.text_align
+          bubble.font_family, bubble.text_align, bubble.outline_color
         );
       }
     });
@@ -4190,13 +4458,36 @@ function sliceCanvasForFacebook(canvas, startSequence, rectangles) {
   return files;
 }
 
-async function buildFacebookSlicePlan(indices, maximum) {
+async function buildFacebookSlicePlan(indices, splitMode) {
   const dimensions = [];
   for (const index of indices) {
     const source = await loadImageElement(images[index].fileUrl);
     dimensions.push({ index, width: source.naturalWidth, height: source.naturalHeight });
   }
-  const counts = window.FacebookExport.allocateSliceCounts(dimensions.map(item => item.height), maximum);
+  
+  const skipCoverCredit = document.getElementById('skipSlicingCoverCredit')?.checked;
+
+  let counts;
+  if (typeof splitMode === 'string' && splitMode.startsWith('fixed-')) {
+    const parts = parseInt(splitMode.split('-')[1]) || 3;
+    counts = dimensions.map(({ index }) => {
+      const nameLower = images[index].name.toLowerCase();
+      const isCoverOrCredit = nameLower.startsWith('00_cover.') || nameLower.startsWith('zz_credit.');
+      if (skipCoverCredit && isCoverOrCredit) return 1;
+      return parts;
+    });
+  } else {
+    const maximum = Number(splitMode) || 33;
+    counts = window.FacebookExport.allocateSliceCounts(dimensions.map(item => item.height), maximum);
+    if (skipCoverCredit) {
+      counts = counts.map((cnt, pos) => {
+        const index = dimensions[pos].index;
+        const nameLower = images[index].name.toLowerCase();
+        const isCoverOrCredit = nameLower.startsWith('00_cover.') || nameLower.startsWith('zz_credit.');
+        return isCoverOrCredit ? 1 : cnt;
+      });
+    }
+  }
   return dimensions.map((item, position) => ({
     index: item.index,
     rectangles: window.FacebookExport.getEqualSliceRects(item.width, item.height, counts[position])
@@ -4212,7 +4503,7 @@ async function runFacebookExport(indicesToExport) {
   setExportBusy(true);
   try {
     exportProgress.textContent = '⏳ กำลังคำนวณจำนวนภาพ...';
-    const slicePlan = await buildFacebookSlicePlan(indicesToExport, Number(facebookMaxImages.value));
+    const slicePlan = await buildFacebookSlicePlan(indicesToExport, facebookMaxImages.value);
     const estimatedCount = slicePlan.reduce((sum, item) => sum + item.rectangles.length, 0);
     const accepted = confirm(
       `จะได้ ${estimatedCount} ภาพ กระจายตามความยาวของแต่ละหน้า\n` +
@@ -4341,7 +4632,7 @@ async function runExport(indicesToExport) {
           if (bubble.translated_text && !bubble.hidden) {
             drawTypesetText(ctx, bubble.translated_text, x1, y1, w, h, bgColorForContrast,
               bubble.font_size, bubble.text_color, bubble.outline, bubble.rotate,
-              bubble.font_family, bubble.text_align);
+              bubble.font_family, bubble.text_align, bubble.outline_color);
           }
         });
       }
@@ -4525,13 +4816,69 @@ if (addBubbleTextBtn) {
     delete cleanedBgCache[activePage.name];
     await saveCurrentPageTranslation();
     renderPageTranslation();
-    if (isPreviewMode) refreshTypesetView();
+    if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
     
     setTimeout(() => {
       focusCard(newId);
     }, 100);
   });
 }
+
+const addCreditPageBtn = document.getElementById('addCreditPageBtn');
+if (addCreditPageBtn) {
+  addCreditPageBtn.addEventListener('click', async () => {
+    if (!currentFolderPath) return;
+    try {
+      const res = await window.api.addCreditPage({
+        project: currentProject,
+        chapter: currentChapter,
+        folderPath: currentFolderPath
+      });
+      if (res.canceled) return;
+      if (res.error) throw new Error(res.error);
+
+      // Reload the folder to include the new credit page
+      await loadFolder(currentFolderPath);
+      
+      // Auto-select the newly added credit page (which will sort last)
+      if (images.length > 0) {
+        await selectPage(images.length - 1);
+      }
+    } catch (err) {
+      console.error(err);
+      alert(`ไม่สามารถแทรกหน้าเครดิตได้: ${err.message}`);
+    }
+  });
+}
+
+const addCoverPageBtn = document.getElementById('addCoverPageBtn');
+if (addCoverPageBtn) {
+  addCoverPageBtn.addEventListener('click', async () => {
+    if (!currentFolderPath) return;
+    try {
+      const res = await window.api.addCoverPage({
+        project: currentProject,
+        chapter: currentChapter,
+        folderPath: currentFolderPath
+      });
+      if (res.canceled) return;
+      if (res.error) throw new Error(res.error);
+
+      // Reload the folder to include the new cover page
+      await loadFolder(currentFolderPath);
+      
+      // Auto-select the newly added cover page (which will sort first)
+      if (images.length > 0) {
+        await selectPage(0);
+      }
+    } catch (err) {
+      console.error(err);
+      alert(`ไม่สามารถแทรกหน้าปกได้: ${err.message}`);
+    }
+  });
+}
+
+
 
 brushSizeRange.addEventListener('input', (e) => {
   brushSize = parseInt(e.target.value);
@@ -4614,19 +4961,21 @@ function getSVGCoords(e) {
 
 // 3. Mouse Event Listeners for Select/Add Bubble modes
 bubbleOverlay.addEventListener('mousedown', (e) => {
+  console.log('[MouseDown] Fired! Target:', e.target.id || e.target.className, 'Tool:', currentTool);
   cancelInlineEditor();
-  if (watermarkDrag) { e.preventDefault(); return; }
-  if (currentTool === 'brush') return;
+  if (watermarkDrag) { e.preventDefault(); console.log('[MouseDown] Aborted: watermarkDrag active'); return; }
+  if (currentTool === 'brush') { console.log('[MouseDown] Aborted: brush tool active'); return; }
   
   const target = e.target;
   const activePage = images[activeIndex];
-  if (!activePage) return;
+  if (!activePage) { console.log('[MouseDown] Aborted: no activePage'); return; }
 
   if (currentTool === 'add') {
     isCreating = true;
     const coords = getSVGCoords(e);
     dragStartX = coords.x;
     dragStartY = coords.y;
+    console.log('[MouseDown] Creating manual bubble start coordinates:', dragStartX, dragStartY);
     
     let tempRect = document.getElementById('tempAddRect');
     if (!tempRect) {
@@ -4684,6 +5033,7 @@ window.addEventListener('mousemove', (e) => {
       const y = Math.min(dragStartY, coords.y);
       const w = Math.abs(coords.x - dragStartX);
       const h = Math.abs(coords.y - dragStartY);
+      console.log('[MouseMove] Drawing tempRect:', x, y, 'w:', w, 'h:', h);
       tempRect.setAttribute('x', x);
       tempRect.setAttribute('y', y);
       tempRect.setAttribute('width', w);
@@ -4715,7 +5065,7 @@ window.addEventListener('mousemove', (e) => {
     
     updateSVGOverlayOnly();
     updateLiveOverflowWarning(bubble);
-    if (isPreviewMode) refreshTypesetView();
+    if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
   } else if (isResizing) {
     const overlayRect = bubbleOverlay.getBoundingClientRect();
     const minimum = window.BubbleGeometry.screenPixelsToSvgUnits(
@@ -4733,15 +5083,16 @@ window.addEventListener('mousemove', (e) => {
     
     updateSVGOverlayOnly();
     updateLiveOverflowWarning(bubble);
-    if (isPreviewMode) refreshTypesetView();
+    if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
   }
 });
 
 window.addEventListener('mouseup', async () => {
   if (!isDragging && !isResizing && !isCreating) return;
+  console.log('[MouseUp] Fired! isDragging:', isDragging, 'isResizing:', isResizing, 'isCreating:', isCreating);
   
   const activePage = images[activeIndex];
-  if (!activePage) return;
+  if (!activePage) { console.log('[MouseUp] Aborted: no activePage'); return; }
   
   if (isCreating) {
     isCreating = false;
@@ -4752,12 +5103,14 @@ window.addEventListener('mouseup', async () => {
       const y = parseFloat(tempRect.getAttribute('y'));
       const w = parseFloat(tempRect.getAttribute('width'));
       const h = parseFloat(tempRect.getAttribute('height'));
+      console.log('[MouseUp] Finished creating box: x:', x, 'y:', y, 'w:', w, 'h:', h);
       
-      if (w > 15 && h > 15) {
+      if (w > 3 && h > 3) {
         const ymin = Math.round(y);
         const xmin = Math.round(x);
         const ymax = Math.round(y + h);
         const xmax = Math.round(x + w);
+        console.log('[MouseUp] Box size valid. Pushing box_2d:', [ymin, xmin, ymax, xmax]);
         
         const newId = activePageTranslation.length > 0
           ? Math.max(...activePageTranslation.map(b => b.bubble_id)) + 1
@@ -4775,13 +5128,17 @@ window.addEventListener('mouseup', async () => {
         });
         
         delete cleanedBgCache[activePage.name];
-        await saveCurrentPageTranslation();
+        console.log('[MouseUp] Calling saveCurrentPageTranslation...');
+        const saveRes = await saveCurrentPageTranslation();
+        console.log('[MouseUp] saveCurrentPageTranslation result:', saveRes);
         renderPageTranslation();
-        if (isPreviewMode) refreshTypesetView();
+        if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
         
         setTimeout(() => {
           focusCard(newId);
         }, 100);
+      } else {
+        console.log('[MouseUp] Box size too small (w or h <= 3). Ignored.');
       }
     }
     return;
@@ -4796,7 +5153,7 @@ window.addEventListener('mouseup', async () => {
   delete cleanedBgCache[activePage.name];
   await saveCurrentPageTranslation();
   renderPageTranslation();
-  if (isPreviewMode) refreshTypesetView();
+  if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
 });
 
 // 4. Brush drawing event listeners on brushMaskCanvas
@@ -4924,7 +5281,7 @@ window.addEventListener('mouseup', async () => {
       }
       
       delete cleanedBgCache[activePage.name];
-      if (isPreviewMode) refreshTypesetView();
+      if (isPreviewMode || showTranslationOverlay) refreshTypesetView();
     }
   }
 });

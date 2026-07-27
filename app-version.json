@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0",
-  "downloadUrl": "https://github.com/namememem02-ui/mirai-comic-translator/releases/download/v0.2.0/Mee-a-rai-ComicTranslator-Setup-0.2.0.exe",
-  "releaseNotes": "เวอร์ชัน 0.2.0 — ปรับปรุงการสแกนฮาร์ดแวร์ NVIDIA GPU (RTX/GTX) และระบบอัปเดตออนไลน์"
+  "version": "1.1.2",
+  "downloadUrl": "https://github.com/namememem02-ui/mirai-comic-translator/releases/download/v1.1.2/Mee-a-rai-ComicTranslator-Setup-1.1.2.exe",
+  "releaseNotes": "เวอร์ชัน 1.1.2 — เพิ่มฟังก์ชันลบหน้าการ์ตูน และระบบละเว้นการหั่นแบ่งหน้าสำหรับหน้าปกและหน้าเครดิตตอนส่งออก Facebook"
 }

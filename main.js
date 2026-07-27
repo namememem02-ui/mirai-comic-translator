@@ -182,6 +182,15 @@ if (!fs.existsSync(OUTPUT_DIR)) {
   fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 }
 
+function logDebug(message) {
+  try {
+    const logFile = path.join(PROJECTS_DIR, 'debug_log.txt');
+    fs.appendFileSync(logFile, `[${new Date().toISOString()}] ${message}\n`);
+  } catch (err) {
+    console.error('Debug log write failed:', err);
+  }
+}
+
 function loadTrustedSourceRoots() {
   const roots = [];
   for (const fileName of ['projects_map.json', 'last_project.json']) {
@@ -220,6 +229,18 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webSecurity: true
+    }
+  });
+
+  // Redirect renderer logs to main process stdout
+  mainWin.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[Renderer] ${message} (at ${path.basename(sourceId)}:${line})`);
+  });
+
+  mainWin.webContents.on('before-input-event', (event, input) => {
+    if ((input.control && input.shift && input.key.toLowerCase() === 'i') || input.key === 'F12') {
+      mainWin.webContents.toggleDevTools();
+      event.preventDefault();
     }
   });
 
@@ -528,13 +549,117 @@ function safeParseJson(rawText) {
   }
 }
 
+function buildCropTranslationPrompt(glossary = {}) {
+  let glossaryText = '';
+  if (glossary && Object.keys(glossary).length > 0) {
+    glossaryText = `Follow this character and glossary naming memory exactly:\n${JSON.stringify(glossary, null, 2)}\n\n`;
+  }
+  return `You are a professional manga/comic translator. ` +
+    `Perform OCR on this cropped image of a single speech bubble or narration panel, and translate the text into Thai.\n\n` +
+    glossaryText +
+    `Output ONLY a valid JSON object with the following keys:\n` +
+    `- "original_text": the exact OCR'd text found in the image.\n` +
+    `- "translated_text": the translation in Thai.\n\n` +
+    `Do not include any explanation or markdown formatting outside the JSON.`;
+}
+
+async function requestGeminiCropTranslation({ data, mimeType, glossary }) {
+  const apiKey = apiKeyStore.getKey();
+  if (!apiKey) {
+    throw new Error('ยังไม่ได้ตั้งค่า API Key — กรุณาเปิดการตั้งค่าและกรอก Gemini API Key');
+  }
+
+  const prompt = buildCropTranslationPrompt(glossary);
+  const models = ['gemini-flash-lite-latest'];
+  let lastErr = null;
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+      const body = {
+        contents: [
+          {
+            parts: [
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: data.toString('base64')
+                }
+              },
+              {
+                text: prompt
+              }
+            ]
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              original_text: { type: "STRING" },
+              translated_text: { type: "STRING" }
+            },
+            required: ["original_text", "translated_text"]
+          },
+          maxOutputTokens: 2048
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      const responseData = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = responseData?.error?.message || `HTTP ${res.status}`;
+        if (/quota|rate limit|RESOURCE_EXHAUSTED/i.test(msg) || res.status === 429) {
+          const matchSec = msg.match(/retry in ([\d\.]+)s/i);
+          const waitTime = matchSec ? Math.ceil(parseFloat(matchSec[1])) : 30;
+          throw new Error(`โควตา Gemini API ฟรีเต็มชั่วคราว (Rate Limit 15 คำขอ/นาที)\nกรุณาพักรอประมาณ ${waitTime} วินาที แล้วลองกดแปลอีกครั้งครับ`);
+        }
+        if (/API key|invalid key/i.test(msg) || res.status === 403) {
+          throw new Error(msg);
+        }
+        const e = new Error(msg);
+        e.retryNextModel = true;
+        throw e;
+      }
+
+      const finishReason = responseData.candidates?.[0]?.finishReason || '';
+      const outputText = (responseData.candidates?.[0]?.content?.parts || [])
+        .map(p => p.text || '')
+        .join('')
+        .trim();
+
+      if (!outputText) {
+        throw new Error(`Gemini ตอบกลับว่างเปล่า (${finishReason || 'empty response'}) — ลองใหม่`);
+      }
+
+      const result = JSON.parse(outputText);
+      if (!result.original_text || !result.translated_text) {
+        throw new Error('โครงสร้างข้อมูลตอบกลับของ Gemini ไม่ถูกต้อง');
+      }
+
+      return result;
+    } catch (err) {
+      lastErr = err;
+      if (!err.retryNextModel) break;
+    }
+  }
+  throw lastErr;
+}
+
 async function requestGeminiTranslation({ data, mimeType, glossary }) {
   const apiKey = apiKeyStore.getKey();
   if (!apiKey) {
     throw new Error('ยังไม่ได้ตั้งค่า API Key — กรุณาเปิดการตั้งค่าและกรอก Gemini API Key');
   }
 
-  const prompt = buildTranslationPrompt(glossary);
+  const prompt = buildTranslationPrompt(glossary, true);
 
   const models = ['gemini-flash-lite-latest'];
   let lastErr = null;
@@ -561,6 +686,39 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
         ],
         generationConfig: {
           responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              bubbles: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    bubble_id: { type: "INTEGER" },
+                    box_2d: {
+                      type: "ARRAY",
+                      items: { type: "INTEGER" }
+                    },
+                    original_text: { type: "STRING" },
+                    translated_text: { type: "STRING" }
+                  },
+                  required: ["bubble_id", "box_2d", "original_text", "translated_text"]
+                }
+              },
+              discovered_names: {
+                type: "ARRAY",
+                items: {
+                  type: "OBJECT",
+                  properties: {
+                    original: { type: "STRING" },
+                    translation: { type: "STRING" }
+                  },
+                  required: ["original", "translation"]
+                }
+              }
+            },
+            required: ["bubbles", "discovered_names"]
+          },
           maxOutputTokens: 8192
         }
       };
@@ -608,6 +766,18 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
           e.retryNextModel = true;
           throw e;
         }
+
+        // Convert discovered_names array format back to flat object mapping for frontend compatibility
+        if (parsed && Array.isArray(parsed.discovered_names)) {
+          const namesObj = {};
+          parsed.discovered_names.forEach(item => {
+            if (item && typeof item.original === 'string' && typeof item.translation === 'string') {
+              namesObj[item.original] = item.translation;
+            }
+          });
+          parsed.discovered_names = namesObj;
+        }
+
         return parsed;
       } catch (err) {
         if (err.retryNextModel) throw err;
@@ -623,44 +793,111 @@ async function requestGeminiTranslation({ data, mimeType, glossary }) {
   throw lastErr;
 }
 
-// IPC Translation call
 ipcMain.handle('translate-page', async (_e, { imagePath, glossary }) => {
-  if (!sourceFolders.isAuthorized(imagePath)) throw new Error('ไม่ได้รับอนุญาตให้อ่านไฟล์ภาพนี้');
-  const sourceImage = nativeImage.createFromPath(imagePath);
-  if (sourceImage.isEmpty()) {
-    throw new Error('ไม่สามารถอ่านไฟล์ภาพสำหรับแปลได้');
+  logDebug(`translate-page start: imagePath=${imagePath}, glossary=${JSON.stringify(glossary)}`);
+  try {
+    if (!sourceFolders.isAuthorized(imagePath)) throw new Error('ไม่ได้รับอนุญาตให้อ่านไฟล์ภาพนี้');
+    const sourceImage = nativeImage.createFromPath(imagePath);
+    if (sourceImage.isEmpty()) {
+      throw new Error('ไม่สามารถอ่านไฟล์ภาพสำหรับแปลได้');
+    }
+
+    const imageSize = sourceImage.getSize();
+    const tiles = planTranslationTiles(imageSize.width, imageSize.height);
+    const ext = path.extname(imagePath).toLowerCase();
+    const originalMimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    
+    let finalResult;
+    if (tiles[0].isFullPage) {
+      finalResult = await requestGeminiTranslation({
+        data: fs.readFileSync(imagePath),
+        mimeType: originalMimeType,
+        glossary,
+      });
+    } else {
+      const tileEntries = [];
+      for (const tile of tiles) {
+        const croppedImage = sourceImage.crop({
+          x: 0,
+          y: tile.cropStart,
+          width: tile.width,
+          height: tile.height,
+        });
+        const result = await requestGeminiTranslation({
+          data: ext === '.png' ? croppedImage.toPNG() : croppedImage.toJPEG(100),
+          mimeType: originalMimeType,
+          glossary,
+        });
+        tileEntries.push({ tile, result });
+      }
+      finalResult = mergeTileResults(tileEntries, imageSize.width, imageSize.height);
+    }
+    
+    logDebug(`translate-page success: discovered_names=${JSON.stringify(finalResult?.discovered_names)}`);
+    return finalResult;
+  } catch (err) {
+    logDebug(`translate-page error: ${err.message}`);
+    throw err;
   }
+});
 
-  const imageSize = sourceImage.getSize();
-  const tiles = planTranslationTiles(imageSize.width, imageSize.height);
-  const ext = path.extname(imagePath).toLowerCase();
-  const originalMimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+ipcMain.handle('translate-crop', async (_e, { imagePath, box_2d, glossary }) => {
+  logDebug(`translate-crop start: imagePath=${imagePath}, box_2d=${JSON.stringify(box_2d)}, glossary=${JSON.stringify(glossary)}`);
+  try {
+    if (!sourceFolders.isAuthorized(imagePath)) throw new Error('ไม่ได้รับอนุญาตให้อ่านไฟล์ภาพนี้');
+    const sourceImage = nativeImage.createFromPath(imagePath);
+    if (sourceImage.isEmpty()) {
+      throw new Error('ไม่สามารถอ่านไฟล์ภาพสำหรับแปลได้');
+    }
 
-  if (tiles[0].isFullPage) {
-    return requestGeminiTranslation({
-      data: fs.readFileSync(imagePath),
-      mimeType: originalMimeType,
-      glossary,
-    });
-  }
+    const imageSize = sourceImage.getSize();
+    const [ymin, xmin, ymax, xmax] = box_2d;
 
-  const tileEntries = [];
-  for (const tile of tiles) {
+    // Convert normalized coordinates (0 to 1000) to actual pixels
+    const pxXmin = Math.floor((xmin / 1000) * imageSize.width);
+    const pxYmin = Math.floor((ymin / 1000) * imageSize.height);
+    const pxXmax = Math.ceil((xmax / 1000) * imageSize.width);
+    const pxYmax = Math.ceil((ymax / 1000) * imageSize.height);
+
+    let pxWidth = pxXmax - pxXmin;
+    let pxHeight = pxYmax - pxYmin;
+
+    // Add a 10% safety margin (padding) around the cropped area to give Gemini visual context
+    const paddingX = Math.round(pxWidth * 0.1);
+    const paddingY = Math.round(pxHeight * 0.1);
+
+    const cropX = Math.max(0, pxXmin - paddingX);
+    const cropY = Math.max(0, pxYmin - paddingY);
+    const cropWidth = Math.min(imageSize.width - cropX, pxWidth + 2 * paddingX);
+    const cropHeight = Math.min(imageSize.height - cropY, pxHeight + 2 * paddingY);
+
+    if (cropWidth <= 0 || cropHeight <= 0) {
+      throw new Error('ขนาดพิกัดของกรอบไม่ถูกต้อง');
+    }
+
     const croppedImage = sourceImage.crop({
-      x: 0,
-      y: tile.cropStart,
-      width: tile.width,
-      height: tile.height,
+      x: cropX,
+      y: cropY,
+      width: cropWidth,
+      height: cropHeight,
     });
-    const result = await requestGeminiTranslation({
-      data: ext === '.png' ? croppedImage.toPNG() : croppedImage.toJPEG(100),
+
+    const ext = path.extname(imagePath).toLowerCase();
+    const originalMimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+    const croppedBuffer = ext === '.png' ? croppedImage.toPNG() : croppedImage.toJPEG(100);
+
+    const result = await requestGeminiCropTranslation({
+      data: croppedBuffer,
       mimeType: originalMimeType,
       glossary,
     });
-    tileEntries.push({ tile, result });
-  }
 
-  return mergeTileResults(tileEntries, imageSize.width, imageSize.height);
+    logDebug(`translate-crop success: original_text=${result.original_text}, translated_text=${result.translated_text}`);
+    return result;
+  } catch (err) {
+    logDebug(`translate-crop error: ${err.message}`);
+    throw err;
+  }
 });
 
 // Local project save/load handlers
@@ -740,25 +977,34 @@ ipcMain.handle('save-chapter-quality-state', (_e, { project, chapter, pageNames,
 });
 
 ipcMain.handle('save-memory', (_e, { project, memoryData }) => {
+  logDebug(`save-memory: project=${project}, data=${JSON.stringify(memoryData)}`);
   try {
     const dir = resolveWithin(PROJECTS_DIR, project);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
     const file = resolveWithin(dir, 'memory.json');
     writeJsonAtomic(file, memoryData);
+    logDebug(`save-memory success: saved to ${file}`);
     return true;
   } catch (err) {
+    logDebug(`save-memory error: ${err.message}`);
     return { error: err.message };
   }
 });
 
 ipcMain.handle('load-memory', (_e, { project }) => {
+  logDebug(`load-memory: project=${project}`);
   try {
     const file = resolveWithin(PROJECTS_DIR, project, 'memory.json');
     if (fs.existsSync(file)) {
-      return readJsonWithRecovery(file, {});
+      const data = readJsonWithRecovery(file, {});
+      logDebug(`load-memory success: loaded ${JSON.stringify(data)}`);
+      return data;
     }
-  } catch (err) {}
+    logDebug(`load-memory: file not found at ${file}`);
+  } catch (err) {
+    logDebug(`load-memory error: ${err.message}`);
+  }
   return {};
 });
 
@@ -977,6 +1223,31 @@ ipcMain.handle('delete-page-translation', (_e, { project, chapter, pageName }) =
   }
 });
 
+// Delete a page image file and its translation JSON file
+ipcMain.handle('delete-page', (_e, { folderPath, project, chapter, pageName }) => {
+  try {
+    if (!sourceFolders.isAuthorized(folderPath)) {
+      return { error: 'โฟลเดอร์นี้ไม่ได้รับอนุญาตให้เข้าถึง' };
+    }
+    
+    // 1. Delete page image file
+    const imgFile = resolveWithin(folderPath, pageName);
+    if (fs.existsSync(imgFile)) {
+      fs.unlinkSync(imgFile);
+    }
+    
+    // 2. Delete translation JSON file
+    const jsonFile = resolveWithin(PROJECTS_DIR, project, chapter, `${validatePathSegment(path.basename(pageName, path.extname(pageName)))}.json`);
+    if (fs.existsSync(jsonFile)) {
+      fs.unlinkSync(jsonFile);
+    }
+    
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
 // List all saved translation JSON files for a project/chapter
 ipcMain.handle('list-chapter-translations', (_e, { project, chapter }) => {
   try {
@@ -1006,3 +1277,54 @@ ipcMain.handle('list-chapter-translations', (_e, { project, chapter }) => {
     return [];
   }
 });
+
+
+
+ipcMain.handle('add-credit-page', async (_e, { project, chapter, folderPath }) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWin, {
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+    
+    const sourcePath = result.filePaths[0];
+    const ext = path.extname(sourcePath).toLowerCase();
+    
+    // We want to copy it to the source folder as 'zz_credit' + extension
+    // We also make sure the source folder exists and is authorized
+    if (!sourceFolders.isAuthorized(folderPath)) {
+      throw new Error('ไม่ได้รับอนุญาตให้เขียนไฟล์ลงโฟลเดอร์ต้นทางนี้');
+    }
+    
+    const destPath = path.join(folderPath, `zz_credit${ext}`);
+    fs.copyFileSync(sourcePath, destPath);
+    return { success: true, destPath };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('add-cover-page', async (_e, { project, chapter, folderPath }) => {
+  try {
+    const result = await dialog.showOpenDialog(mainWin, {
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }]
+    });
+    if (result.canceled || result.filePaths.length === 0) return { canceled: true };
+    
+    const sourcePath = result.filePaths[0];
+    const ext = path.extname(sourcePath).toLowerCase();
+    
+    if (!sourceFolders.isAuthorized(folderPath)) {
+      throw new Error('ไม่ได้รับอนุญาตให้เขียนไฟล์ลงโฟลเดอร์ต้นทางนี้');
+    }
+    
+    const destPath = path.join(folderPath, `00_cover${ext}`);
+    fs.copyFileSync(sourcePath, destPath);
+    return { success: true, destPath };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+

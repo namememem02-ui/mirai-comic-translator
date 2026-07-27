@@ -30,5 +30,5 @@ test('renderer rolls back memory and Undo when saving fails', () => {
   assert.match(renderer, /activePageTranslation = previousTranslation/);
   assert.match(renderer, /undoStack\.length = undoLengthBeforeCopy/);
   assert.match(renderer, /renderPageTranslation\(\)/);
-  assert.match(renderer, /if \(isPreviewMode\) refreshTypesetView\(\)/);
+  assert.match(renderer, /if \(isPreviewMode \|\| showTranslationOverlay\) refreshTypesetView\(\)/);
 });

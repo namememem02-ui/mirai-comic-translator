@@ -39,9 +39,11 @@ test('editor style clamps geometry and sanitizes typography', () => {
   }), {
     left: '10%', top: '0%', width: '80%', height: '100%',
     fontFamily: 'Prompt', textAlign: 'left', color: '#123456',
+    transform: 'none',
   });
   assert.deepEqual(buildEditorStyle({ box_2d: [200, 300, 100, 200], text_align: 'bad', text_color: 'url(x)' }), {
     left: '20%', top: '10%', width: '10%', height: '10%',
     fontFamily: 'Sarabun', textAlign: 'center', color: '#111827',
+    transform: 'none',
   });
 });

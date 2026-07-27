@@ -95,6 +95,11 @@
 
       <!-- Thumbnails Grid -->
       <div id="thumbnailsList" class="thumbnails-list"></div>
+      <!-- Add Cover / Credit Page Buttons -->
+      <div id="addPageButtonsContainer" style="display:none; gap: 6px; margin-top: 8px; width: 100%;">
+        <button id="addCoverPageBtn" class="btn btn-secondary" style="flex: 1; font-size:11px; padding:6px; background:#1e293b; border:1px solid #334155; color:#38bdf8; border-radius:6px; cursor:pointer;" title="แทรกหน้าปกไว้หน้าแรกสุด">🎨 แทรกหน้าปกบท</button>
+        <button id="addCreditPageBtn" class="btn btn-secondary" style="flex: 1; font-size:11px; padding:6px; background:#1e293b; border:1px solid #334155; color:#38bdf8; border-radius:6px; cursor:pointer;" title="แทรกหน้าเครดิตท้ายตอน">➕ แทรกหน้าเครดิตปิดท้ายตอน</button>
+      </div>
       </div>
     </section>
 
@@ -127,6 +132,9 @@
           </button>
           <button id="previewToggleBtn" class="btn btn-accent" disabled>
             👁️ ดูหน้าแปลไทย
+          </button>
+          <button id="showOverlayBtn" class="btn btn-secondary" disabled title="แสดงตัวอักษรภาษาไทยทับบนภาพต้นฉบับ">
+            👁️‍🗨️ แสดงอักษรแปลทับ
           </button>
           <button id="chapterReviewBtn" class="btn btn-secondary" disabled>📖 รีวิวรวม</button>
           <button id="chapterFindReplaceBtn" class="btn btn-secondary" disabled>⌕ ค้นหา/แทนที่ทั้งตอน</button>
@@ -605,16 +613,30 @@
       <div id="exportSelectedCount" style="text-align:right; font-size:11px; color:#94a3b8; margin-top:6px;"></div>
     </div>
 
-    <div class="export-step export-naming" style="padding:10px 22px 0; display:flex; align-items:center; gap:8px;">
-      <label for="facebookArchiveName" style="font-size:11px; color:#94a3b8; white-space:nowrap;">ชื่อ ZIP:</label>
-      <input id="facebookArchiveName" type="text" maxlength="120" style="flex:1; min-width:0; background:#1e293b; border:1px solid #475569; color:#f8fafc; border-radius:5px; padding:6px 8px; font-size:12px;" />
-      <label for="facebookMaxImages" style="font-size:11px; color:#94a3b8; white-space:nowrap;">สูงสุด:</label>
-      <select id="facebookMaxImages" style="background:#1e293b; border:1px solid #475569; color:#f8fafc; border-radius:5px; padding:6px 8px; font-size:12px;">
-        <option value="11">11 รูป</option>
-        <option value="22">22 รูป</option>
-        <option value="33" selected>33 รูป</option>
-        <option value="44">44 รูป</option>
-      </select>
+    <div class="export-step export-naming" style="padding:10px 22px 0; display:flex; flex-direction:column; gap:8px;">
+      <div style="display:flex; align-items:center; gap:8px; width:100%;">
+        <label for="facebookArchiveName" style="font-size:11px; color:#94a3b8; white-space:nowrap; width:60px;">ชื่อ ZIP:</label>
+        <input id="facebookArchiveName" type="text" maxlength="120" style="flex:1; min-width:0; background:#1e293b; border:1px solid #475569; color:#f8fafc; border-radius:5px; padding:6px 8px; font-size:12px;" />
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; width:100%;">
+        <label for="facebookMaxImages" style="font-size:11px; color:#94a3b8; white-space:nowrap; width:60px;">การแบ่งหน้า:</label>
+        <select id="facebookMaxImages" style="background:#1e293b; border:1px solid #475569; color:#f8fafc; border-radius:5px; padding:6px 8px; font-size:12px; flex:1; min-width:0;">
+          <option value="fixed-3" selected>แบ่งคงที่ 1 หน้าเป็น 3 ส่วน (แนะนำ - คมชัดสูง)</option>
+          <option value="fixed-4">แบ่งคงที่ 1 หน้าเป็น 4 ส่วน (คมชัดสูงมาก)</option>
+          <option value="fixed-2">แบ่งคงที่ 1 หน้าเป็น 2 ส่วน</option>
+          <option value="fixed-1">ไม่แบ่งเลย (1 หน้าต่อ 1 รูป)</option>
+          <option value="33">เฉลี่ยรวมไม่เกิน 33 รูป (อัตโนมัติ)</option>
+          <option value="44">เฉลี่ยรวมไม่เกิน 44 รูป (อัตโนมัติ)</option>
+          <option value="22">เฉลี่ยรวมไม่เกิน 22 รูป (อัตโนมัติ)</option>
+          <option value="11">เฉลี่ยรวมไม่เกิน 11 รูป (อัตโนมัติ)</option>
+        </select>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; width:100%; margin-left:68px; margin-top:2px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:11px; color:#94a3b8; cursor:pointer;">
+          <input id="skipSlicingCoverCredit" type="checkbox" checked style="cursor:pointer;" />
+          ละเว้นไม่แบ่งหน้าปกและหน้าเครดิต (ไม่หั่นปก/เครดิต)
+        </label>
+      </div>
     </div>
 
     <!-- Footer -->
