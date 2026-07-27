@@ -5,6 +5,12 @@ const { deriveProjectChapter } = require('../lib/safe-paths');
 test('preserves Unicode project names and recognizes a numeric chapter suffix', () => {
   assert.deepEqual(deriveProjectChapter('เรื่องไทย_12'), { project: 'เรื่องไทย', chapter: '12' });
   assert.deepEqual(deriveProjectChapter('漫画'), { project: '漫画', chapter: '01' });
+  
+  // Test smart parsing formats (v1.1.3)
+  assert.deepEqual(deriveProjectChapter('The Sound of Gifted Silence Chapter 1'), { project: 'The Sound of Gifted Silence', chapter: '1' });
+  assert.deepEqual(deriveProjectChapter('The Sound of Gifted Silence Ch 2'), { project: 'The Sound of Gifted Silence', chapter: '2' });
+  assert.deepEqual(deriveProjectChapter('The Sound of Gifted Silence ตอนที่ 3'), { project: 'The Sound of Gifted Silence', chapter: '3' });
+  assert.deepEqual(deriveProjectChapter('The Sound of Gifted Silence (04)'), { project: 'The Sound of Gifted Silence', chapter: '04' });
 });
 
 test('falls back safely for invalid or reserved folder names', () => {
